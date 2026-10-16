@@ -143,14 +143,14 @@ function unsupportedHandle(): QuestionHandle
 
 it('refuses to encode a question type the wire format does not know', function (): void {
     (new SystemOneCodec)->encode(Decision::about(Context::text('x'))->ask(unsupportedHandle()));
-})->throws(InvalidDecision::class, 'The wire format has no question type for ');
+})->throws(InvalidDecision::class, 'The wire format has no question type for '.QuestionHandle::class.'@anonymous.');
 
 it('refuses to decode a question type the wire format does not know', function (): void {
     (new SystemOneCodec)->decode(
         Decision::about(Context::text('x'))->ask(unsupportedHandle()),
         okResponse(['answers' => ['mystery' => ['type' => 'noul', 'noul' => 0.5]]]),
     );
-})->throws(InvalidDecision::class, 'The wire format has no question type for ');
+})->throws(InvalidDecision::class, 'The wire format has no question type for '.QuestionHandle::class.'@anonymous.');
 
 it('ignores answers to questions it did not ask', function (): void {
     $result = (new SystemOneCodec)->decode(churnDecision(), okResponse([

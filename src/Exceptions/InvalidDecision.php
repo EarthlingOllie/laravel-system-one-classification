@@ -6,6 +6,8 @@ namespace EarthlingOllie\SystemOneClassification\Exceptions;
 
 use InvalidArgumentException;
 
+use function get_debug_type;
+
 /** A decision or question that cannot be sent, caught before anything goes over the wire. */
 final class InvalidDecision extends InvalidArgumentException implements SystemOneException
 {
@@ -31,6 +33,6 @@ final class InvalidDecision extends InvalidArgumentException implements SystemOn
 
     public static function unsupportedQuestion(object $question): self
     {
-        return new self('The wire format has no question type for '.$question::class.'.');
+        return new self('The wire format has no question type for '.get_debug_type($question).'.');
     }
 }

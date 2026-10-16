@@ -15,7 +15,7 @@ final class HostUnavailable extends RuntimeException implements SystemOneExcepti
         public readonly ?int $status = null,
         ?Throwable $previous = null,
     ) {
-        parent::__construct($message, 0, $previous);
+        parent::__construct($message, previous: $previous);
     }
 
     public static function unreachable(string $url, Throwable $previous): self
