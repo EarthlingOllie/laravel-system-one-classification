@@ -14,8 +14,7 @@ use Illuminate\Contracts\Config\Repository;
 use Illuminate\Http\Client\Factory;
 
 use function is_array;
-use function is_float;
-use function is_int;
+use function is_numeric;
 use function is_string;
 
 /**
@@ -47,7 +46,7 @@ final readonly class SystemOneManager
 
         $url = $connection['url'] ?? null;
         $apiKey = $connection['api_key'] ?? null;
-        $timeout = $connection['timeout'] ?? 30.0;
+        $timeout = $connection['timeout'] ?? '';
 
         if (! is_string($url) || $url === '') {
             throw InvalidConfiguration::missingUrl($name);
@@ -57,7 +56,12 @@ final readonly class SystemOneManager
             throw InvalidConfiguration::apiKeyNotString($name);
         }
 
-        if ((! is_int($timeout) && ! is_float($timeout)) || $timeout <= 0) {
+        // An empty env value (`SYSTEM_ONE_TIMEOUT=`) reaches here as '' or null: use the default.
+        if ($timeout === '') {
+            $timeout = 30.0;
+        }
+
+        if (! is_numeric($timeout) || $timeout <= 0) {
             throw InvalidConfiguration::invalidTimeout($name);
         }
 

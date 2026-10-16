@@ -2,7 +2,14 @@
 
 declare(strict_types=1);
 
+use EarthlingOllie\SystemOneClassification\Domain\Context;
+use EarthlingOllie\SystemOneClassification\Domain\Decision;
+use EarthlingOllie\SystemOneClassification\Domain\Question;
+use EarthlingOllie\SystemOneClassification\Exceptions\InvalidConfiguration;
+use EarthlingOllie\SystemOneClassification\Laravel\Facades\SystemOne;
 use EarthlingOllie\SystemOneClassification\Laravel\SystemOneServiceProvider;
+use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\ServiceProvider;
 
 const CONFIG_FILE = __DIR__.'/../../config/system-one.php';
@@ -50,7 +57,7 @@ it('points the local connection at http://localhost:8000 when SYSTEM_ONE_URL is 
             'local' => [
                 'url' => 'http://localhost:8000',
                 'api_key' => null,
-                'timeout' => 30.0,
+                'timeout' => 30,
             ],
         ],
     ]);
@@ -64,8 +71,58 @@ it('takes the local base URL, key and timeout from the environment', function ()
     ]);
 
     expect($config['connections'])->toBe([
-        'local' => ['url' => 'http://laya:8000', 'api_key' => 'secret', 'timeout' => 5.0],
+        'local' => ['url' => 'http://laya:8000', 'api_key' => 'secret', 'timeout' => '5'],
     ]);
+});
+
+/**
+ * Loads config/system-one.php into the app with the given environment, then asks one question
+ * through the facade against a faked host.
+ *
+ * @param  array<string, string|null>  $environment
+ * @return array{Request, array<string, mixed>} the request sent and the HTTP client options
+ */
+function decideWithEnvironment(array $environment): array
+{
+    config(['system-one' => systemOneConfigWith($environment)]);
+    $sent = [];
+    Http::fake(function (Request $request, array $options) use (&$sent) {
+        $sent = [$request, $options];
+
+        return Http::response(['answers' => ['churn' => ['type' => 'noul', 'noul' => 0.1]]]);
+    });
+
+    SystemOne::decide(Decision::about(Context::text('x'))->ask(Question::yesNo('churn', 'Cancel?')));
+
+    return $sent;
+}
+
+it('uses the 30 second timeout when SYSTEM_ONE_TIMEOUT is set but empty', function (string $value): void {
+    [, $options] = decideWithEnvironment(['SYSTEM_ONE_URL' => 'http://laya.test', 'SYSTEM_ONE_TIMEOUT' => $value]);
+
+    expect($options)->toHaveKey('timeout', 30.0);
+})->with(['empty' => '', 'null' => 'null', '(null)' => '(null)']);
+
+it('applies a SYSTEM_ONE_TIMEOUT taken from the environment', function (): void {
+    [, $options] = decideWithEnvironment(['SYSTEM_ONE_URL' => 'http://laya.test', 'SYSTEM_ONE_TIMEOUT' => '2.5']);
+
+    expect($options)->toHaveKey('timeout', 2.5);
+});
+
+it('rejects a SYSTEM_ONE_TIMEOUT that is not a positive number of seconds', function (string $value): void {
+    expect(fn () => decideWithEnvironment(['SYSTEM_ONE_URL' => 'http://laya.test', 'SYSTEM_ONE_TIMEOUT' => $value]))
+        ->toThrow(InvalidConfiguration::class, "System One connection 'local' has a 'timeout' that is not a number of seconds.");
+})->with(['zero' => '0', 'negative' => '-1', 'words' => 'soon']);
+
+it('sends no API key when SYSTEM_ONE_API_KEY is set but empty', function (): void {
+    [$request] = decideWithEnvironment(['SYSTEM_ONE_URL' => 'http://laya.test', 'SYSTEM_ONE_API_KEY' => '']);
+
+    expect($request->hasHeader('Authorization'))->toBeFalse();
+});
+
+it('says the connection needs a URL when SYSTEM_ONE_URL is set but empty', function (): void {
+    expect(fn () => decideWithEnvironment(['SYSTEM_ONE_URL' => '']))
+        ->toThrow(InvalidConfiguration::class, "System One connection 'local' needs a 'url'.");
 });
 
 it('takes the default connection from SYSTEM_ONE_CONNECTION', function (): void {
