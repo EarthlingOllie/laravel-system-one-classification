@@ -3,9 +3,13 @@
 # (.github/workflows/integration.yml), not here.
 name: CI
 
+# Pull requests run every gate; pushes to main re-check the merged result. Pushing to a
+# PR branch therefore runs CI once, not twice. workflow_dispatch runs it on any branch.
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
