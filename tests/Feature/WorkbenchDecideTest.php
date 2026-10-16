@@ -60,13 +60,16 @@ it('escapes the text and the error message', function (): void {
         ->assertSee('&lt;b&gt;busy&lt;/b&gt;', escape: false);
 });
 
-it('renders other package errors with a 502 status', function (): void {
-    Http::fake(['*' => Http::response('<html>', 200)]);
+it('renders what the model server got wrong with a 502 status', function (mixed $body, int $status, string $error): void {
+    Http::fake(['*' => Http::response($body, $status)]);
 
     $this->get('/decide')
         ->assertStatus(502)
-        ->assertSee('data-error="MalformedResponse"', escape: false);
-});
+        ->assertSee("data-error=\"{$error}\"", escape: false);
+})->with([
+    'malformed' => ['<html>', 200, 'MalformedResponse'],
+    'rejected' => [['detail' => 'invalid or missing bearer token'], 401, 'RejectedByModel'],
+]);
 
 it('renders a configuration error with a 500 status', function (): void {
     config(['system-one.default' => 'nope']);

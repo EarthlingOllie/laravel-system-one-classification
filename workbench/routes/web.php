@@ -6,7 +6,8 @@ use EarthlingOllie\SystemOneClassification\Domain\Context;
 use EarthlingOllie\SystemOneClassification\Domain\Decision;
 use EarthlingOllie\SystemOneClassification\Domain\Question;
 use EarthlingOllie\SystemOneClassification\Exceptions\HostUnavailable;
-use EarthlingOllie\SystemOneClassification\Exceptions\InvalidConfiguration;
+use EarthlingOllie\SystemOneClassification\Exceptions\MalformedResponse;
+use EarthlingOllie\SystemOneClassification\Exceptions\RejectedByModel;
 use EarthlingOllie\SystemOneClassification\Exceptions\SystemOneException;
 use EarthlingOllie\SystemOneClassification\Laravel\Facades\SystemOne;
 use EarthlingOllie\SystemOneClassification\Laravel\SystemOneServiceProvider;
@@ -43,9 +44,11 @@ Route::get('/', function (Application $app): string {
 
 /*
  * One yes/no question, end to end: SystemOne::decide() against the default connection
- * (SYSTEM_ONE_URL). A non-blank ?text= replaces the default ticket. A package exception is rendered
- * as an error page: 503 for HostUnavailable, 500 for InvalidConfiguration (the app's own
- * config is wrong), 502 for anything else.
+ * (SYSTEM_ONE_URL). A non-blank ?text= replaces the default ticket. A package exception is
+ * rendered as an error page: 503 when the server is unreachable or down (HostUnavailable),
+ * 502 when it refused the decision or answered nonsense (RejectedByModel,
+ * MalformedResponse), 500 for this app's own mistakes (InvalidConfiguration and the rest).
+ * Messages are shown as the package wrote them; HostUnavailable's are already redacted.
  *
  * Under `composer serve` the shell environment does not reach this app (Testbench turns
  * off putenv and the PHP built-in server fills neither $_ENV nor $_SERVER from it): to
@@ -77,8 +80,8 @@ Route::get('/decide', function (Request $request): Response {
     } catch (SystemOneException $exception) {
         $status = match (true) {
             $exception instanceof HostUnavailable => 503,
-            $exception instanceof InvalidConfiguration => 500,
-            default => 502,
+            $exception instanceof RejectedByModel, $exception instanceof MalformedResponse => 502,
+            default => 500, // this app's own mistake: InvalidConfiguration, InvalidDecision, ...
         };
         $type = e(class_basename($exception));
         $message = e($exception->getMessage());
