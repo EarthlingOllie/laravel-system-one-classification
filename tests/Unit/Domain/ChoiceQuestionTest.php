@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use EarthlingOllie\SystemOneClassification\Domain\Describe;
 use EarthlingOllie\SystemOneClassification\Domain\Question;
 use EarthlingOllie\SystemOneClassification\Domain\Question\ChoiceQuestion;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidDecision;
@@ -10,8 +11,12 @@ use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\BlankDescription
 use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\BlankTranslation;
 use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\Channel;
 use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\Department;
+use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\DescribeNotString;
+use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\DescribeUnknownArgument;
+use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\DescribeWithoutText;
 use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\NoCases;
 use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\Priority;
+use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\RepeatedDescribe;
 use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\TranslatedDepartment;
 use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\Unbacked;
 
@@ -83,6 +88,27 @@ it('rejects a blank description, from the attribute or the interface', function 
 it('names the option whose description is blank', function (): void {
     Question::choice('blank', BlankTranslation::class, 'Which one?');
 })->throws(InvalidDecision::class, "Option '7' of choice question 'blank' has a description that is blank; describe it or leave the description out.");
+
+// PHP builds the attribute only when it is read, so a malformed one surfaces as an Error
+// from newInstance(), which `catch (SystemOneException)` would miss.
+it('rejects a #[Describe] that PHP cannot build, naming the enum case and keeping the cause', function (string $enum, string $error, string $reason): void {
+    try {
+        Question::choice('broken', $enum, 'Which one?');
+    } catch (InvalidDecision $e) {
+        expect($e->getMessage())->toStartWith("Option 'broken' of choice question 'broken' has a #[Describe] on {$enum}::Broken that PHP cannot build: {$reason}")
+            ->and($e->getPrevious())->toBeInstanceOf($error)
+            ->and($e->getMessage())->toEndWith($e->getPrevious()?->getMessage() ?? 'no previous');
+
+        return;
+    }
+
+    throw new RuntimeException('No InvalidDecision was thrown.');
+})->with([
+    'repeated' => [RepeatedDescribe::class, Error::class, 'Attribute "'.Describe::class.'" must not be repeated'],
+    'no description' => [DescribeWithoutText::class, ArgumentCountError::class, 'Too few arguments'],
+    'not a string' => [DescribeNotString::class, TypeError::class, Describe::class.'::__construct(): Argument #1 ($description) must be of type string, int given'],
+    'unknown argument' => [DescribeUnknownArgument::class, Error::class, 'Unknown named parameter $text'],
+]);
 
 it('validates the key like every other question', function (string $key): void {
     Question::choice($key, Department::class, 'Which department?');

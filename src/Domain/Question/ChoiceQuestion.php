@@ -9,6 +9,7 @@ use EarthlingOllie\SystemOneClassification\Domain\Describe;
 use EarthlingOllie\SystemOneClassification\Domain\DescribesCases;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidDecision;
 use EarthlingOllie\SystemOneClassification\Result\Answer\ChoiceAnswer;
+use Error;
 use ReflectionClassConstant;
 
 use function is_subclass_of;
@@ -37,7 +38,8 @@ final readonly class ChoiceQuestion implements QuestionHandle
      * @param  class-string<TEnum>  $enum
      *
      * @throws InvalidDecision when the key or instructions are invalid, the class is not a
-     *                         backed enum, the enum has no cases, or a description is blank
+     *                         backed enum, the enum has no cases, a description is blank, or
+     *                         a #[Describe] cannot be built (repeated, or wrong arguments)
      */
     public function __construct(string $key, public string $enum, public string $instructions)
     {
@@ -82,7 +84,15 @@ final readonly class ChoiceQuestion implements QuestionHandle
             $description = $case->describe();
         } else {
             $attributes = new ReflectionClassConstant($case, $case->name)->getAttributes(Describe::class);
-            $description = ($attributes[0] ?? null)?->newInstance()->description;
+
+            // PHP checks an attribute's arguments, and that it is not repeated, only when it is
+            // built here. Every such failure is an Error (ArgumentCountError and TypeError among
+            // them), and Describe's constructor does nothing else that could throw.
+            try {
+                $description = ($attributes[0] ?? null)?->newInstance()->description;
+            } catch (Error $e) {
+                throw InvalidDecision::malformedDescribe($key, $case, $e);
+            }
         }
 
         if ($description !== null && trim($description) === '') {

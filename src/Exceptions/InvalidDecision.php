@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace EarthlingOllie\SystemOneClassification\Exceptions;
 
+use BackedEnum;
+use Error;
 use InvalidArgumentException;
 
 use function get_debug_type;
@@ -48,6 +50,20 @@ final class InvalidDecision extends InvalidArgumentException implements SystemOn
     public static function blankDescription(string $key, string $label): self
     {
         return new self("Option '{$label}' of choice question '{$key}' has a description that is blank; describe it or leave the description out.");
+    }
+
+    /**
+     * PHP's own Error stays attached as the previous exception: it names the file and line of
+     * the attribute, and there is nothing secret in it.
+     */
+    public static function malformedDescribe(string $key, BackedEnum $case, Error $previous): self
+    {
+        $enum = $case::class;
+
+        return new self(
+            "Option '{$case->value}' of choice question '{$key}' has a #[Describe] on {$enum}::{$case->name} that PHP cannot build: {$previous->getMessage()}",
+            previous: $previous,
+        );
     }
 
     public static function duplicateKey(string $key): self
