@@ -37,6 +37,10 @@ jobs:
       LAYA_API_KEY: ci-fixture-key
       LAYA_WAIT_TIMEOUT: "1800"
       SYSTEM_ONE_URL: http://127.0.0.1:8000
+      # The PHP client's key for the same server (config/system-one.php reads it).
+      SYSTEM_ONE_API_KEY: ci-fixture-key
+      # Fail the PHP integration suite, rather than skip it, if the server is not reachable.
+      SYSTEM_ONE_REQUIRE_SERVER: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -68,8 +72,15 @@ jobs:
       - name: Smoke-test every recorded scenario against the live server
         run: bin/laya-record-fixtures --out "$RUNNER_TEMP/laya-fixtures"
 
-      # The PHP integration suite (tagged, see docs/PLAN.md) runs here once it exists, against
-      # SYSTEM_ONE_URL with LAYA_API_KEY.
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+
+      - uses: ramsey/composer-install@v3
+
+      - name: PHP integration suite against the live server
+        run: composer test:integration
 
       - name: Server logs
         if: failure()

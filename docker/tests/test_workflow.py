@@ -45,6 +45,21 @@ class IntegrationWorkflowTest(unittest.TestCase):
     def test_the_container_job_sets_a_key_so_the_401_path_is_exercised(self):
         self.assertTrue(self.jobs["laya-container"]["env"]["LAYA_API_KEY"])
 
+    def test_the_php_integration_suite_runs_against_the_container_with_its_key(self):
+        job = self.jobs["laya-container"]
+        names = [s.get("name", "") for s in job["steps"]]
+        runs = [s for s in job["steps"] if "composer test:integration" in s.get("run", "")]
+        self.assertEqual(len(runs), 1)
+        # After the server is up, before it is stopped; the key is the server's own.
+        index = job["steps"].index(runs[0])
+        up = next(i for i, s in enumerate(job["steps"]) if "bin/laya-up" in s.get("run", ""))
+        down = next(i for i, s in enumerate(job["steps"]) if "bin/laya-down" in s.get("run", ""))
+        self.assertLess(up, index, names)
+        self.assertLess(index, down, names)
+        self.assertEqual(job["env"]["SYSTEM_ONE_API_KEY"], job["env"]["LAYA_API_KEY"])
+        # A skipped suite must not pass: the guard fails instead of skipping when this is set.
+        self.assertEqual(job["env"]["SYSTEM_ONE_REQUIRE_SERVER"], "1")
+
 
 if __name__ == "__main__":
     unittest.main()
