@@ -6,6 +6,8 @@ laravel: '@testbench'
 env:
   # Throwaway key for the local workbench app only (encrypted cookies on web routes).
   - APP_KEY="base64:8qYkwXk2TVuV1M/nj61QQOG33ogSpXeXNV0TVSbr/kQ="
+  # `composer serve` must not take 8000, the local Laya server's port.
+  - SERVER_PORT=8010
 
 workbench:
   start: '/'
