@@ -12,6 +12,7 @@ use EarthlingOllie\SystemOneClassification\Exceptions\HostUnavailable;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidDecision;
 use EarthlingOllie\SystemOneClassification\Exceptions\MalformedResponse;
 use EarthlingOllie\SystemOneClassification\Exceptions\RejectedByModel;
+use EarthlingOllie\SystemOneClassification\Result\Abstention;
 use EarthlingOllie\SystemOneClassification\Result\Answer\Answer;
 use EarthlingOllie\SystemOneClassification\Result\Answer\YesNoAnswer;
 use EarthlingOllie\SystemOneClassification\Result\Result;
@@ -20,6 +21,7 @@ use EarthlingOllie\SystemOneClassification\Transport\Response;
 use function array_filter;
 use function array_is_list;
 use function is_array;
+use function is_bool;
 use function is_float;
 use function is_int;
 use function is_string;
@@ -54,22 +56,6 @@ final readonly class SystemOneCodec
         }
 
         return ['state' => $decision->context->text, ...self::controls($decision), 'questions' => $questions];
-    }
-
-    /**
-     * The request controls the decision sets; one left null is not sent, so the server's default applies.
-     *
-     * @return array<string, float|int|string>
-     */
-    private static function controls(Decision $decision): array
-    {
-        return array_filter([
-            'min_confidence' => $decision->minConfidence,
-            'lang' => $decision->language,
-            'lang_guess' => $decision->languageHint,
-            'max_len' => $decision->maxLength,
-            'head_max_len' => $decision->headMaxLength,
-        ], static fn (float|int|string|null $control): bool => $control !== null);
     }
 
     /**
@@ -121,6 +107,22 @@ final readonly class SystemOneCodec
     }
 
     /**
+     * The request controls the decision sets; one left null is not sent, so the server's default applies.
+     *
+     * @return array<string, float|int|string>
+     */
+    private static function controls(Decision $decision): array
+    {
+        return array_filter([
+            'min_confidence' => $decision->minConfidence,
+            'lang' => $decision->language,
+            'lang_guess' => $decision->languageHint,
+            'max_len' => $decision->maxLength,
+            'head_max_len' => $decision->headMaxLength,
+        ], static fn (float|int|string|null $control): bool => $control !== null);
+    }
+
+    /**
      * The one dispatch on question type: what to send for a question and how to read its answer.
      *
      * encode() and decode() both go through here, so a type the codec knows has both halves and
@@ -163,7 +165,47 @@ final readonly class SystemOneCodec
             throw MalformedResponse::because("The answer for '{$key}' has a 'noul' probability outside [0, 1]: {$probability}.", $body);
         }
 
-        return new YesNoAnswer((float) $probability);
+        return new YesNoAnswer((float) $probability, ...self::decodeAbstention($key, $answer, $body));
+    }
+
+    /**
+     * The abstention gate's fields, which every answer type carries when the decision set a
+     * minimum confidence: `abstention` (passed, abstained or unevaluated), `abstention_threshold`,
+     * and `low_confidence: true` on abstained answers only.
+     *
+     * `abstention` decides. A server that sends only `low_confidence` (none of the recorded
+     * ones do) reads as abstained when it is true. With neither field, no gate ran.
+     *
+     * @param  array<mixed>  $answer
+     * @return array{abstention: Abstention, abstentionThreshold: ?float} the answer constructor's named arguments
+     */
+    private static function decodeAbstention(string $key, array $answer, string $body): array
+    {
+        $state = $answer['abstention'] ?? null;
+        $lowConfidence = $answer['low_confidence'] ?? false;
+        $threshold = $answer['abstention_threshold'] ?? null;
+
+        if (! is_bool($lowConfidence)) {
+            throw MalformedResponse::because("The answer for '{$key}' has a non-boolean 'low_confidence'.", $body);
+        }
+
+        $abstention = match ($state) {
+            null => $lowConfidence ? Abstention::Abstained : Abstention::NotRequested,
+            'passed' => Abstention::Passed,
+            'abstained' => Abstention::Abstained,
+            'unevaluated' => Abstention::Unevaluated,
+            default => throw MalformedResponse::because("The answer for '{$key}' has an unknown 'abstention' state: ".json_encode($state, JSON_THROW_ON_ERROR).'.', $body),
+        };
+
+        if ($threshold !== null && ! is_int($threshold) && ! is_float($threshold)) {
+            throw MalformedResponse::because("The answer for '{$key}' has a non-numeric 'abstention_threshold'.", $body);
+        }
+
+        if ($threshold !== null && ($threshold < 0 || $threshold > 1)) {
+            throw MalformedResponse::because("The answer for '{$key}' has an 'abstention_threshold' outside [0, 1]: {$threshold}.", $body);
+        }
+
+        return ['abstention' => $abstention, 'abstentionThreshold' => $threshold === null ? null : (float) $threshold];
     }
 
     /** The `{"detail": "..."}` message laya-serve and Jev put on every error, if present. */

@@ -12,6 +12,7 @@ use EarthlingOllie\SystemOneClassification\Exceptions\MalformedResponse;
 use EarthlingOllie\SystemOneClassification\Exceptions\RejectedByModel;
 use EarthlingOllie\SystemOneClassification\Exceptions\UnknownQuestion;
 use EarthlingOllie\SystemOneClassification\Protocol\SystemOneCodec;
+use EarthlingOllie\SystemOneClassification\Result\Abstention;
 use EarthlingOllie\SystemOneClassification\Result\Answer\YesNoAnswer;
 use EarthlingOllie\SystemOneClassification\Transport\Response;
 
@@ -148,6 +149,44 @@ it('raises MalformedResponse for a body that does not match the expected shape',
     'noul is a string' => ['{"answers": {"churn": {"type": "noul", "noul": "0.5"}}}', "The answer for 'churn' has no numeric 'noul' probability."],
     'noul above 1' => ['{"answers": {"churn": {"type": "noul", "noul": 1.2}}}', "The answer for 'churn' has a 'noul' probability outside [0, 1]: 1.2."],
     'noul below 0' => ['{"answers": {"churn": {"type": "noul", "noul": -0.1}}}', "The answer for 'churn' has a 'noul' probability outside [0, 1]: -0.1."],
+]);
+
+/** @param array<string, mixed> $gate the abstention fields of the churn answer */
+function churnAnswerWith(array $gate): YesNoAnswer
+{
+    return (new SystemOneCodec)->decode(churnDecision(), okResponse([
+        'answers' => ['churn' => ['type' => 'noul', 'noul' => 0.73, ...$gate]],
+    ]))->get(Question::yesNo('churn', 'Does the customer threaten to cancel?'));
+}
+
+it('reads the abstention gate of an answer', function (array $gate, Abstention $abstention, bool $abstained, ?float $threshold): void {
+    $answer = churnAnswerWith($gate);
+
+    expect($answer->abstention)->toBe($abstention)
+        ->and($answer->abstained)->toBe($abstained)
+        ->and($answer->abstentionThreshold)->toBe($threshold)
+        ->and($answer->probability)->toBe(0.73);
+})->with([
+    'no gate ran' => [[], Abstention::NotRequested, false, null],
+    'abstained' => [['low_confidence' => true, 'abstention' => 'abstained', 'abstention_threshold' => 0.9], Abstention::Abstained, true, 0.9],
+    'passed' => [['abstention' => 'passed', 'abstention_threshold' => 0.6], Abstention::Passed, false, 0.6],
+    'unevaluated' => [['abstention' => 'unevaluated', 'abstention_threshold' => 0.6], Abstention::Unevaluated, false, 0.6],
+    'integer threshold' => [['abstention' => 'passed', 'abstention_threshold' => 0], Abstention::Passed, false, 0.0],
+    'low_confidence alone' => [['low_confidence' => true], Abstention::Abstained, true, null],
+    'low_confidence with a threshold' => [['low_confidence' => true, 'abstention_threshold' => 0.8], Abstention::Abstained, true, 0.8],
+    'low_confidence false' => [['low_confidence' => false], Abstention::NotRequested, false, null],
+    'abstention wins over low_confidence' => [['low_confidence' => true, 'abstention' => 'passed', 'abstention_threshold' => 0.5], Abstention::Passed, false, 0.5],
+]);
+
+it('raises MalformedResponse for abstention fields of the wrong shape', function (array $gate, string $message): void {
+    expect(fn () => churnAnswerWith($gate))->toThrow(MalformedResponse::class, $message);
+})->with([
+    'unknown state' => [['abstention' => 'maybe'], "The answer for 'churn' has an unknown 'abstention' state: \"maybe\"."],
+    'state not a string' => [['abstention' => true], "The answer for 'churn' has an unknown 'abstention' state: true."],
+    'threshold a string' => [['abstention' => 'passed', 'abstention_threshold' => '0.5'], "The answer for 'churn' has a non-numeric 'abstention_threshold'."],
+    'threshold above 1' => [['abstention' => 'passed', 'abstention_threshold' => 1.5], "The answer for 'churn' has an 'abstention_threshold' outside [0, 1]: 1.5."],
+    'threshold below 0' => [['abstention' => 'passed', 'abstention_threshold' => -0.5], "The answer for 'churn' has an 'abstention_threshold' outside [0, 1]: -0.5."],
+    'low_confidence not a bool' => [['low_confidence' => 'yes'], "The answer for 'churn' has a non-boolean 'low_confidence'."],
 ]);
 
 it('keeps the raw body on a MalformedResponse for debugging', function (): void {
