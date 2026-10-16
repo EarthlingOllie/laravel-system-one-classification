@@ -6,7 +6,8 @@ namespace EarthlingOllie\SystemOneClassification\Exceptions;
 
 use LogicException;
 
-use function json_encode;
+use function get_debug_type;
+use function is_int;
 
 /** A ResultSet read at a position it has no result for, or written to. */
 final class InvalidResultSetAccess extends LogicException implements SystemOneException
@@ -18,8 +19,9 @@ final class InvalidResultSetAccess extends LogicException implements SystemOneEx
 
     public static function noResultAt(mixed $offset, int $count): self
     {
+        $where = is_int($offset) ? "at {$offset}" : 'for a '.get_debug_type($offset).' offset';
         $holds = $count === 0 ? 'no results' : "{$count} results (0 to ".($count - 1).')';
 
-        return new self('The result set has no result at '.json_encode($offset, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)."; it holds {$holds}.");
+        return new self("The result set has no result {$where}; it holds {$holds}.");
     }
 }

@@ -89,7 +89,9 @@ it('refuses a position it has no result for', function (mixed $offset, string $m
 })->with([
     'past the end' => [3, 'The result set has no result at 3; it holds 3 results (0 to 2).'],
     'negative' => [-1, 'The result set has no result at -1; it holds 3 results (0 to 2).'],
-    'a numeric string' => ['0', 'The result set has no result at "0"; it holds 3 results (0 to 2).'],
+    'a numeric string' => ['0', 'The result set has no result for a string offset; it holds 3 results (0 to 2).'],
+    'an object' => [new stdClass, 'The result set has no result for a stdClass offset; it holds 3 results (0 to 2).'],
+    'null' => [null, 'The result set has no result for a null offset; it holds 3 results (0 to 2).'],
 ]);
 
 it('says it is empty when an empty set is read', function (): void {
