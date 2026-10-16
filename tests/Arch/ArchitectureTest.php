@@ -31,6 +31,8 @@ const READONLY_CORE = [
     PACKAGE.'\\Model',
     PACKAGE.'\\Protocol',
     PACKAGE.'\\Transport',
+    // The client itself is immutable too (PLAN.md, Quality bar): one instance per connection.
+    PACKAGE.'\\Client',
 ];
 
 /*
