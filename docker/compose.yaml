@@ -31,6 +31,8 @@ services:
       # Optional: cap torch CPU threads (keep <= physical cores).
       LAYA_THREADS: ${LAYA_THREADS:-}
       LAYA_MAX_LOADED: ${LAYA_MAX_LOADED:-}
+      # Optional JSON {name: hub id or path} registering checkpoints of your own.
+      LAYA_EXTRA_MODELS: ${LAYA_EXTRA_MODELS:-}
       LAYA_JEV_STRICT: ${LAYA_JEV_STRICT:-}
       LAYA_TOURNAMENT_GROUP: ${LAYA_TOURNAMENT_GROUP:-}
       LAYA_LOG_LEVEL: ${LAYA_LOG_LEVEL:-info}

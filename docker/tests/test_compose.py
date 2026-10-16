@@ -62,6 +62,10 @@ class ComposeTest(unittest.TestCase):
         env = compose_config("compose.yaml", env={"LAYA_MODELS": "english,multilingual"})["services"]["laya"]["environment"]
         self.assertEqual(env["LAYA_MODELS"], "english,multilingual")
 
+    def test_extra_checkpoints_pass_through(self):
+        env = compose_config("compose.yaml", env={"LAYA_EXTRA_MODELS": '{"mine": "/models/mine"}'})["services"]["laya"]["environment"]
+        self.assertEqual(env["LAYA_EXTRA_MODELS"], '{"mine": "/models/mine"}')
+
     def test_there_is_no_api_key_by_default(self):
         self.assertEqual(self.laya["environment"].get("LAYA_API_KEY") or "", "")
 
