@@ -62,5 +62,25 @@ def main():
     return 0
 
 
+def verify_against_laya():
+    """Check the copied names against the installed laya (run at build time and in CI).
+
+    The probe keeps its own copy because importing laya on every probe costs ~0.4 s of CPU;
+    this keeps the copy honest when the pinned laya version changes.
+    """
+    from laya.router import _ALIASES, DEFAULT_MODELS
+
+    problems = []
+    if dict(_ALIASES) != ALIASES:
+        problems.append("aliases differ: laya has %r" % (dict(_ALIASES),))
+    if set(DEFAULT_MODELS) != set(ALL_CHECKPOINTS):
+        problems.append("checkpoints differ: laya has %r" % (sorted(DEFAULT_MODELS),))
+    if problems:
+        print("healthcheck.py is out of date with the installed laya:\n" + "\n".join(problems))
+        return 1
+    print("healthcheck.py matches laya's checkpoint names and aliases")
+    return 0
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(verify_against_laya() if sys.argv[1:] == ["--verify-against-laya"] else main())

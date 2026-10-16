@@ -29,6 +29,8 @@ RUN useradd --create-home --uid 1000 --shell /usr/sbin/nologin laya \
  && chown -R laya:laya /home/laya/.cache
 
 COPY healthcheck.py /opt/laya/healthcheck.py
+# Fail the build if the probe's copy of laya's checkpoint names has drifted from this laya.
+RUN python /opt/laya/healthcheck.py --verify-against-laya
 
 USER laya
 WORKDIR /home/laya

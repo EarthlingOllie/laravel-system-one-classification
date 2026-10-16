@@ -33,6 +33,9 @@ class DockerfileTest(unittest.TestCase):
     def test_the_healthcheck_is_the_python_probe(self):
         self.assertRegex(self.instructions, r"(?m)^HEALTHCHECK .*python /opt/laya/healthcheck\.py")
 
+    def test_the_build_fails_if_the_probe_drifted_from_laya(self):
+        self.assertRegex(self.instructions, r"(?m)^RUN python /opt/laya/healthcheck\.py --verify-against-laya$")
+
     def test_it_starts_laya_serve(self):
         self.assertRegex(self.instructions, r'(?m)^CMD \["laya-serve"\]')
 

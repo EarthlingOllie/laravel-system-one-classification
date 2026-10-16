@@ -3,13 +3,22 @@ import json
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 
 from _support import DOCKER, clean_env
 
 PROBE = DOCKER / "laya" / "healthcheck.py"
+ALL_CHECKPOINTS = ("english", "multilingual", "typed-decisions")
+ALIASES = {
+    "en": "english", "laya": "english", "default": "english",
+    "multi": "multilingual", "ml": "multilingual", "laya-multilingual": "multilingual",
+    "typed": "typed-decisions", "typed_decisions": "typed-decisions",
+    "laya-typed-decisions": "typed-decisions", "decisions": "typed-decisions",
+}
 
 
 class FakeLaya:
@@ -112,6 +121,58 @@ class HealthcheckTest(unittest.TestCase):
         self.laya.payload = {"status": "ok", "loaded": ["english"]}
         self.probe(LAYA_MODELS="english")
         self.assertIsNone(self.laya.seen_auth[-1])
+
+
+class VerifyAgainstLayaTest(unittest.TestCase):
+    """--verify-against-laya, against a stand-in laya.router."""
+
+    def verify(self, aliases, models):
+        with tempfile.TemporaryDirectory() as tmp:
+            pkg = Path(tmp) / "laya"
+            pkg.mkdir()
+            (pkg / "__init__.py").write_text("")
+            (pkg / "router.py").write_text("_ALIASES = %r\nDEFAULT_MODELS = %r\n" % (aliases, models))
+            return subprocess.run([sys.executable, str(PROBE), "--verify-against-laya"], capture_output=True,
+                                  text=True, timeout=30, env=clean_env({"PYTHONPATH": tmp}))
+
+    def models(self):
+        return {name: ("convaiinnovations/laya", None) for name in ALL_CHECKPOINTS}
+
+    def test_passes_when_the_copy_matches(self):
+        result = self.verify(dict(ALIASES), self.models())
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_fails_when_laya_adds_an_alias(self):
+        result = self.verify(dict(ALIASES, eng="english"), self.models())
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("aliases differ", result.stdout)
+
+    def test_fails_when_laya_adds_a_checkpoint(self):
+        result = self.verify(dict(ALIASES), dict(self.models(), legal=("x", None)))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("checkpoints differ", result.stdout)
+
+
+IMAGE = "earthlingollie/laya-serve:0.4.8-cpu"
+
+
+def image_available():
+    try:
+        return subprocess.run(["docker", "image", "inspect", IMAGE], capture_output=True).returncode == 0
+    except OSError:
+        return False
+
+
+@unittest.skipUnless(image_available(), "the laya-serve image is not built here")
+class ProbeMatchesInstalledLayaTest(unittest.TestCase):
+    """The probe's copy of laya's checkpoint names must match the laya in the image."""
+
+    def test_the_alias_table_and_checkpoint_list_match_laya_router(self):
+        result = subprocess.run(["docker", "run", "--rm", "--network", "none", "--entrypoint", "python",
+                                 IMAGE, "/opt/laya/healthcheck.py", "--verify-against-laya"],
+                                capture_output=True, text=True, timeout=120)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("matches laya", result.stdout)
 
 
 if __name__ == "__main__":
