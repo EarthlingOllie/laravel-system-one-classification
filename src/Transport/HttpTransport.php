@@ -33,7 +33,9 @@ final readonly class HttpTransport implements Transport
         try {
             $response = $request->post($path, $body);
         } catch (ConnectionException $exception) {
-            throw HostUnavailable::unreachable($this->baseUrl, $exception);
+            $redactor = Redactor::forConnection($this->baseUrl, $this->apiKey);
+
+            throw HostUnavailable::unreachable($redactor->redact($this->baseUrl), $redactor->redact($exception->getMessage()));
         }
 
         return new Response($response->status(), $response->body());

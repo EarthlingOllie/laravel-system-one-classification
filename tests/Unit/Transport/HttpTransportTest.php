@@ -5,7 +5,6 @@ declare(strict_types=1);
 use EarthlingOllie\SystemOneClassification\Exceptions\HostUnavailable;
 use EarthlingOllie\SystemOneClassification\Transport\HttpTransport;
 use EarthlingOllie\SystemOneClassification\Transport\Response;
-use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Request;
 
@@ -70,16 +69,34 @@ it('raises HostUnavailable when the server cannot be reached', function (): void
         ->toThrow(HostUnavailable::class, 'The model server at http://laya.test:8000 could not be reached: Connection refused');
 });
 
-it('raises HostUnavailable for a real refused connection, with the cause attached', function (): void {
+it('keeps the URL credentials, query secrets and API key out of HostUnavailable', function (): void {
+    $http = new Factory;
+    // Guzzle 7 appends the request URI, query string included, to a connection error.
+    $http->fake(['*' => Factory::failedConnection('cURL error 7: refused for http://***@laya.test/laya?api_key=q-secret/v1/systemone (key sk-bearer)')]);
+    $transport = new HttpTransport($http, 'http://ollie:s3cret-pass@laya.test/laya?api_key=q-secret', 'sk-bearer');
+
+    try {
+        $transport->post('/v1/systemone', []);
+        $this->fail('Expected HostUnavailable.');
+    } catch (HostUnavailable $unavailable) {
+        expect($unavailable->getMessage())->toBe('The model server at http://***@laya.test/laya?api_key=*** could not be reached: cURL error 7: refused for http://***@laya.test/laya?api_key=*** (key ***)')
+            ->and($unavailable->getPrevious())->toBeNull()
+            ->and((string) $unavailable)->not->toContain('s3cret-pass')->not->toContain('q-secret')->not->toContain('sk-bearer')->not->toContain('ollie');
+    }
+});
+
+it('raises HostUnavailable for a real refused connection, with no secret anywhere in it', function (): void {
     // Port 9 (discard) on loopback: nothing listens there in a test environment.
-    $transport = new HttpTransport(new Factory, 'http://127.0.0.1:9', timeout: 2.0);
+    $transport = new HttpTransport(new Factory, 'http://ollie:s3cret-pass@127.0.0.1:9/laya?api_key=q-secret', 'sk-bearer', 2.0);
 
     try {
         $transport->post('/v1/systemone', []);
         $this->fail('Expected HostUnavailable.');
     } catch (HostUnavailable $unavailable) {
         expect($unavailable->status)->toBeNull()
-            ->and($unavailable->getPrevious())->toBeInstanceOf(ConnectionException::class);
+            ->and($unavailable->getMessage())->toStartWith('The model server at http://***@127.0.0.1:9/laya?api_key=*** could not be reached: cURL error 7: ')
+            ->and($unavailable->getPrevious())->toBeNull()
+            ->and((string) $unavailable)->not->toContain('s3cret-pass')->not->toContain('q-secret')->not->toContain('sk-bearer')->not->toContain('ollie');
     }
 });
 
