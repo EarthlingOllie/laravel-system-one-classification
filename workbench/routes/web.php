@@ -44,6 +44,11 @@ Route::get('/', function (Application $app): string {
  * One yes/no question, end to end: SystemOne::decide() against the default connection
  * (SYSTEM_ONE_URL). ?text= replaces the default ticket. A package exception is rendered
  * as an error page: 503 for HostUnavailable, 502 for anything else.
+ *
+ * Under `composer serve` the shell environment does not reach this app (Testbench turns
+ * off putenv and the PHP built-in server fills neither $_ENV nor $_SERVER from it): to
+ * use another server or a key, add SYSTEM_ONE_URL / SYSTEM_ONE_API_KEY to the `env:`
+ * list in testbench.yaml.
  */
 Route::get('/decide', function (Request $request): Response {
     $text = $request->string('text', 'Hi, we were billed twice for March. Please refund the duplicate charge today or we will cancel our plan.')->toString();
