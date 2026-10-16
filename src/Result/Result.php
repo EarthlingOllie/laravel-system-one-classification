@@ -14,11 +14,17 @@ use function array_keys;
 final readonly class Result
 {
     /**
-     * @param  array<string, Answer>  $answers  keyed by question key
+     * @param  array<string, array{question: QuestionHandle<Answer>, answer: Answer}>  $answers  each asked handle with its answer, keyed by question key
      */
     public function __construct(private array $answers) {}
 
     /**
+     * Reads the answer to an asked question.
+     *
+     * Handles are values: an equal handle (same class, key, instructions and every other setting)
+     * built elsewhere reads the same answer. A handle that only shares the key, for example one
+     * from another decision, is refused rather than handed that decision's answer.
+     *
      * @template TAnswer of Answer
      *
      * @param  QuestionHandle<TAnswer>  $question
@@ -28,11 +34,18 @@ final readonly class Result
      */
     public function get(QuestionHandle $question): Answer
     {
-        $answer = $this->answers[$question->key] ?? throw UnknownQuestion::notAsked($question->key, array_keys($this->answers));
+        $key = $question->key;
+        ['question' => $asked, 'answer' => $answer] = $this->answers[$key] ?? throw UnknownQuestion::notAsked($key, array_keys($this->answers));
+
+        // Strict on every property, private ones included; nested objects (enum cases) compare by identity.
+        if ($asked::class !== $question::class || (array) $asked !== (array) $question) {
+            throw UnknownQuestion::otherQuestion($key);
+        }
+
         $type = $question->answerType();
 
         if (! $answer instanceof $type) {
-            throw UnknownQuestion::otherType($question->key, $answer::class, $type);
+            throw UnknownQuestion::otherType($key, $answer::class, $type);
         }
 
         return $answer;

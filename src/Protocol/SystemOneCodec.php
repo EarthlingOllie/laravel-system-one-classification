@@ -95,7 +95,7 @@ final readonly class SystemOneCodec
                 throw MalformedResponse::because("The answer for '{$question->key}' is not an object.", $response->body);
             }
 
-            $decoded[$question->key] = $this->decodeAnswer($question, $answer, $response->body);
+            $decoded[$question->key] = ['question' => $question, 'answer' => $this->decodeAnswer($question, $answer, $response->body)];
         }
 
         return new Result($decoded);
