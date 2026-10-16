@@ -3,17 +3,16 @@
 declare(strict_types=1);
 
 use EarthlingOllie\SystemOneClassification\Laravel\SystemOneServiceProvider;
-use EarthlingOllie\SystemOneClassification\Tests\TestCase;
+use EarthlingOllie\SystemOneClassification\Tests\Support\ComposerManifest;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Foundation\PackageManifest;
 
 it('is declared for Laravel package auto-discovery', function (): void {
-    expect(TestCase::discoveredProviders())->toBe([SystemOneServiceProvider::class]);
+    expect(ComposerManifest::providers())->toBe([SystemOneServiceProvider::class]);
 });
 
 it('is picked up by Laravel package discovery from the installed package metadata', function (): void {
-    $root = dirname(__DIR__, 2);
-    $composer = json_decode((string) file_get_contents($root.'/composer.json'), true, flags: JSON_THROW_ON_ERROR);
+    $composer = ComposerManifest::read();
 
     $basePath = sys_get_temp_dir().'/system-one-discovery-'.bin2hex(random_bytes(6));
     $files = new Filesystem;
