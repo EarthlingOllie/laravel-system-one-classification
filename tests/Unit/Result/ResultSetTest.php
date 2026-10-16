@@ -111,6 +111,29 @@ it('refuses to have a result removed', function (): void {
     }
 });
 
+it('concatenates two sets into a new one, in order, adding their usage', function (): void {
+    $first = new ResultSet([churnResult(0.1), churnResult(0.2)], new Usage(10, 1));
+    $second = new ResultSet([churnResult(0.3)], new Usage(5, 2));
+
+    $both = $first->concat($second);
+
+    expect($both->all())->toBe([...$first->all(), ...$second->all()])
+        ->and($both->usage)->toEqual(new Usage(15, 3))
+        ->and($first)->toHaveCount(2)
+        ->and($first->usage)->toEqual(new Usage(10, 1))
+        ->and($second)->toHaveCount(1);
+});
+
+it('has no usage once either concatenated set has none', function (?Usage $first, ?Usage $second): void {
+    $both = (new ResultSet([churnResult(0.1)], $first))->concat(new ResultSet([churnResult(0.2)], $second));
+
+    expect($both->usage)->toBeNull();
+})->with([
+    'first' => [null, new Usage(5, 0)],
+    'second' => [new Usage(5, 0), null],
+    'both' => [null, null],
+]);
+
 it('cannot have its usage replaced', function (): void {
     [$set] = threeResults();
 

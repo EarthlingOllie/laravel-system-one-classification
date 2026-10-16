@@ -35,6 +35,17 @@ final readonly class ResultSet implements ArrayAccess, Countable, IteratorAggreg
     ) {}
 
     /**
+     * A new set holding these results followed by the other set's, with both usages added.
+     * The usage is null when either set has none, rather than a sum that leaves part out.
+     */
+    public function concat(self $other): self
+    {
+        $usage = $this->usage !== null && $other->usage !== null ? $this->usage->plus($other->usage) : null;
+
+        return new self([...$this->results, ...$other->results], $usage);
+    }
+
+    /**
      * @return list<Result>
      */
     public function all(): array
@@ -55,12 +66,19 @@ final readonly class ResultSet implements ArrayAccess, Countable, IteratorAggreg
         yield from $this->results;
     }
 
+    /**
+     * @param  mixed  $offset  anything PHP passes for `isset($set[...])`; only a position matches
+     */
     public function offsetExists(mixed $offset): bool
     {
         return is_int($offset) && isset($this->results[$offset]);
     }
 
-    /** @throws InvalidResultSetAccess when there is no result at that position */
+    /**
+     * @param  mixed  $offset  anything PHP passes for `$set[...]`; only a held position reads
+     *
+     * @throws InvalidResultSetAccess when there is no result at that position
+     */
     public function offsetGet(mixed $offset): Result
     {
         if (! is_int($offset) || ! isset($this->results[$offset])) {
