@@ -10,6 +10,9 @@ name: system-one
 services:
   laya:
     image: earthlingollie/laya-serve:0.4.8-cpu
+    # Always build from docker/laya (the layer cache makes it quick): never pull this name,
+    # never run an image left over from an older Dockerfile or healthcheck.
+    pull_policy: build
     build:
       context: ./laya
     ports:

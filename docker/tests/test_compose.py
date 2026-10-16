@@ -101,6 +101,11 @@ class ComposeTest(unittest.TestCase):
         self.assertTrue(self.laya["build"]["context"].endswith("/docker/laya"))
         self.assertIn("0.4.8", self.laya["image"])
 
+    def test_the_image_is_always_built_locally_never_pulled_or_stale(self):
+        # Without this, Compose reuses any image with the tag after the Dockerfile or the probe
+        # changes, and tries Docker Hub first when it is missing.
+        self.assertEqual(self.laya["pull_policy"], "build")
+
 
 class CudaOverrideTest(unittest.TestCase):
     def setUp(self):

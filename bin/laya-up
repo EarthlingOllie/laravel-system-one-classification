@@ -11,7 +11,7 @@ here="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
 # shellcheck source=bin/lib/laya-compose.sh
 source "$here/bin/lib/laya-compose.sh"
 
-# No --build: Compose builds the pinned image only when it is missing.
+# docker/compose.yaml sets pull_policy: build, so `up` rebuilds from the layer cache each time.
 timeout="${LAYA_WAIT_TIMEOUT:-1800}"
 echo "Starting laya-serve (first run downloads the checkpoint, this can take a while)..."
 if ! laya_compose up -d --wait --wait-timeout "$timeout"; then
