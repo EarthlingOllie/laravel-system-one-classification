@@ -268,6 +268,36 @@ it('raises MalformedResponse for metadata of the wrong shape', function (array $
     'output tokens a float' => [['usage' => ['output_tokens' => 1.5]], "The response's 'usage.output_tokens' is not a non-negative integer."],
 ]);
 
+/** @param string $root the response's root fields beside `answers`, as raw JSON members, so `12.0` stays a float */
+function metaFromJson(string $root): Meta
+{
+    return (new SystemOneCodec)->decode(
+        churnDecision(),
+        new Response(200, '{"answers": {"churn": {"type": "noul", "noul": 0.5}}, '.$root.'}'),
+    )->meta;
+}
+
+it('reads a whole-number token count written with a fraction, which is the same JSON number', function (string $usage, int $input, int $output): void {
+    $meta = metaFromJson('"usage": '.$usage);
+
+    expect($meta->inputTokens)->toBe($input)
+        ->and($meta->outputTokens)->toBe($output);
+})->with([
+    'zero fraction' => ['{"input_tokens": 12.0, "output_tokens": 0.0}', 12, 0],
+    'exponent' => ['{"input_tokens": 1e2, "output_tokens": 3E0}', 100, 3],
+    'negative zero' => ['{"input_tokens": -0.0, "output_tokens": 1}', 0, 1],
+]);
+
+it('still refuses token counts that are not whole non-negative numbers', function (string $usage, string $message): void {
+    expect(fn () => metaFromJson('"usage": '.$usage))->toThrow(MalformedResponse::class, $message);
+})->with([
+    'fractional' => ['{"input_tokens": 12.5}', "The response's 'usage.input_tokens' is not a non-negative integer."],
+    'negative whole float' => ['{"input_tokens": -1.0}', "The response's 'usage.input_tokens' is not a non-negative integer."],
+    'one past the largest int' => ['{"output_tokens": 9223372036854775808}', "The response's 'usage.output_tokens' is not a non-negative integer."],
+    'beyond an int' => ['{"output_tokens": 1e19}', "The response's 'usage.output_tokens' is not a non-negative integer."],
+    'infinite' => ['{"output_tokens": 1e400}', "The response's 'usage.output_tokens' is not a non-negative integer."],
+]);
+
 it('has no latency when decode() is not given one', function (): void {
     expect(metaFrom(['model' => 'laya-rl-agent'])->latencyMs)->toBeNull();
 });

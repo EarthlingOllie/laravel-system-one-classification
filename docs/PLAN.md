@@ -529,3 +529,28 @@ New questions get added here as they come up.
    same lie as reporting it as a flag". Laya 0.4.8 always sends `abstention`
    when `min_confidence` is set (live and in the fixtures), so this only
    applies to a host that does not, such as Jev, whose spec is still unknown.
+
+2. **How strictly is response metadata read?** `usage` and `routing` are
+   informational, and hosts differ (Jev, and laya-serve under
+   `LAYA_JEV_STRICT=1`, send no `routing`), so a strict check could cost a
+   caller valid answers over a field it may never read.
+
+   **Settled in #7: strict, like the answers.** Each meta field is optional,
+   and keys the codec doesn't read are ignored, which already covers the
+   known differences between hosts. A field that is present but has the wrong
+   shape (`"routing": "english"`, a string token count) raises
+   `MalformedResponse` with the raw body. It is not mapped to null. `Meta`'s
+   null means "the host did not report this", and turning a broken report
+   into a null would make usage totals undercount without any sign. A root
+   field changing shape also means the protocol has drifted, so the answers
+   in the same body can't be trusted either. laya-serve 0.4.8 always sends
+   whole-number token counts (`int(...)` sums in `agent.py` and `serve.py`)
+   and a `routing` object (`dict(decision)` in `router.py`), so no recorded
+   host trips the check. A per-profile split (strict for Laya, tolerant for
+   others) was rejected because it means two behaviours to keep and test, for
+   a host whose spec isn't known yet.
+
+   One exception: a token count written as a whole number with a fraction or
+   exponent (`12.0`, `1e2`) is the same JSON number as `12` or `100`, so it
+   reads as that int. Fractional, negative, infinite and out-of-range values
+   are still refused.

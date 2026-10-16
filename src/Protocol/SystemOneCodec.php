@@ -272,12 +272,21 @@ final readonly class SystemOneCodec
     }
 
     /**
+     * A whole number written with a fraction or exponent (`12.0`, `1e2`) is the same JSON number
+     * as `12` or `100`, so it is read as that int. Any other value is still refused.
+     *
      * @param  array<mixed>  $usage
      * @return ?non-negative-int
      */
     private static function optionalTokenCount(array $usage, string $field, string $body): ?int
     {
         $value = $usage[$field] ?? null;
+
+        if (is_float($value)) {
+            // A fraction, or a value no int can hold, doesn't survive the round trip.
+            $whole = (int) $value;
+            $value = (float) $whole === $value ? $whole : $value;
+        }
 
         if ($value !== null && (! is_int($value) || $value < 0)) {
             throw MalformedResponse::because("The response's 'usage.{$field}' is not a non-negative integer.", $body);
