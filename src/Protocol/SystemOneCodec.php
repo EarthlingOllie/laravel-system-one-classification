@@ -15,6 +15,7 @@ use EarthlingOllie\SystemOneClassification\Exceptions\RejectedByModel;
 use EarthlingOllie\SystemOneClassification\Result\Abstention;
 use EarthlingOllie\SystemOneClassification\Result\Answer\Answer;
 use EarthlingOllie\SystemOneClassification\Result\Answer\YesNoAnswer;
+use EarthlingOllie\SystemOneClassification\Result\Meta;
 use EarthlingOllie\SystemOneClassification\Result\Result;
 use EarthlingOllie\SystemOneClassification\Transport\Response;
 
@@ -59,12 +60,14 @@ final readonly class SystemOneCodec
     }
 
     /**
+     * @param  ?float  $latencyMs  the round trip's latency, measured by the caller, for the result's meta
+     *
      * @throws HostUnavailable on a 5xx
      * @throws RejectedByModel on a 4xx
      * @throws MalformedResponse when the status or body is not what the protocol defines
      * @throws InvalidDecision for a decision encode() refuses, so never for one that was sent
      */
-    public function decode(Decision $decision, Response $response): Result
+    public function decode(Decision $decision, Response $response, ?float $latencyMs = null): Result
     {
         $body = json_decode($response->body, true);
         $status = $response->status;
@@ -103,7 +106,7 @@ final readonly class SystemOneCodec
             $decoded[$question->key] = ['question' => $question, 'answer' => self::wire($question)['decode']($answer, $response->body)];
         }
 
-        return new Result($decoded);
+        return new Result($decoded, self::decodeMeta($body, $response->body, $latencyMs));
     }
 
     /**
@@ -206,6 +209,72 @@ final readonly class SystemOneCodec
         }
 
         return ['abstention' => $abstention, 'abstentionThreshold' => $threshold === null ? null : (float) $threshold];
+    }
+
+    /**
+     * The root `model`, `routing` and `usage` fields. Each is optional, since not every host
+     * reports them, but one that is present must have the protocol's shape.
+     *
+     * @param  array<mixed>  $root
+     */
+    private static function decodeMeta(array $root, string $body, ?float $latencyMs): Meta
+    {
+        $routing = self::optionalObject($root, 'routing', 'routing', $body);
+        $usage = self::optionalObject($root, 'usage', 'usage', $body);
+
+        return new Meta(
+            model: self::optionalString($root, 'model', 'model', $body),
+            checkpoint: self::optionalString($routing, 'model', 'routing.model', $body),
+            routingReason: self::optionalString($routing, 'reason', 'routing.reason', $body),
+            inputTokens: self::optionalTokenCount($usage, 'input_tokens', $body),
+            outputTokens: self::optionalTokenCount($usage, 'output_tokens', $body),
+            latencyMs: $latencyMs,
+        );
+    }
+
+    /**
+     * @param  array<mixed>  $parent
+     * @return array<mixed> empty when the field is absent or null
+     */
+    private static function optionalObject(array $parent, string $field, string $path, string $body): array
+    {
+        $value = $parent[$field] ?? [];
+
+        // `{}` decodes to [], which array_is_list() also accepts.
+        if (! is_array($value) || ($value !== [] && array_is_list($value))) {
+            throw MalformedResponse::because("The response's '{$path}' is not an object.", $body);
+        }
+
+        return $value;
+    }
+
+    /**
+     * @param  array<mixed>  $parent
+     */
+    private static function optionalString(array $parent, string $field, string $path, string $body): ?string
+    {
+        $value = $parent[$field] ?? null;
+
+        if ($value !== null && ! is_string($value)) {
+            throw MalformedResponse::because("The response's '{$path}' is not a string.", $body);
+        }
+
+        return $value;
+    }
+
+    /**
+     * @param  array<mixed>  $usage
+     * @return ?non-negative-int
+     */
+    private static function optionalTokenCount(array $usage, string $field, string $body): ?int
+    {
+        $value = $usage[$field] ?? null;
+
+        if ($value !== null && (! is_int($value) || $value < 0)) {
+            throw MalformedResponse::because("The response's 'usage.{$field}' is not a non-negative integer.", $body);
+        }
+
+        return $value;
     }
 
     /** The `{"detail": "..."}` message laya-serve and Jev put on every error, if present. */

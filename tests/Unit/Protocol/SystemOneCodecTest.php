@@ -14,6 +14,7 @@ use EarthlingOllie\SystemOneClassification\Exceptions\UnknownQuestion;
 use EarthlingOllie\SystemOneClassification\Protocol\SystemOneCodec;
 use EarthlingOllie\SystemOneClassification\Result\Abstention;
 use EarthlingOllie\SystemOneClassification\Result\Answer\YesNoAnswer;
+use EarthlingOllie\SystemOneClassification\Result\Meta;
 use EarthlingOllie\SystemOneClassification\Transport\Response;
 
 function churnDecision(): Decision
@@ -188,6 +189,62 @@ it('raises MalformedResponse for abstention fields of the wrong shape', function
     'threshold below 0' => [['abstention' => 'passed', 'abstention_threshold' => -0.5], "The answer for 'churn' has an 'abstention_threshold' outside [0, 1]: -0.5."],
     'low_confidence not a bool' => [['low_confidence' => 'yes'], "The answer for 'churn' has a non-boolean 'low_confidence'."],
 ]);
+
+/** @param array<string, mixed> $root the response's root fields beside `answers` */
+function metaFrom(array $root, ?float $latencyMs = null): Meta
+{
+    return (new SystemOneCodec)->decode(churnDecision(), okResponse([
+        'answers' => ['churn' => ['type' => 'noul', 'noul' => 0.5]],
+        ...$root,
+    ]), $latencyMs)->meta;
+}
+
+it('reads the model, routing and token usage the server reported', function (): void {
+    $meta = metaFrom([
+        'model' => 'laya-rl-agent',
+        'usage' => ['input_tokens' => 57, 'output_tokens' => 3, 'state_tokens' => 22, 'truncated' => false],
+        'routing' => ['model' => 'english', 'repo' => '/somewhere', 'reason' => 'English Latin text', 'detection' => null],
+    ], 12.5);
+
+    expect($meta)->toEqual(new Meta(
+        model: 'laya-rl-agent',
+        checkpoint: 'english',
+        routingReason: 'English Latin text',
+        inputTokens: 57,
+        outputTokens: 3,
+        latencyMs: 12.5,
+    ));
+});
+
+it('leaves out what the server did not report, as Jev does with routing', function (array $root, Meta $meta): void {
+    expect(metaFrom($root))->toEqual($meta);
+})->with([
+    'nothing' => [[], new Meta],
+    'nulls' => [['model' => null, 'usage' => null, 'routing' => null], new Meta],
+    'usage only' => [['usage' => ['input_tokens' => 5, 'output_tokens' => 0]], new Meta(inputTokens: 5, outputTokens: 0)],
+    'routing without reason' => [['routing' => ['model' => 'english']], new Meta(checkpoint: 'english')],
+    'routing with null fields' => [['routing' => ['model' => null, 'reason' => null]], new Meta],
+    'usage with one count' => [['usage' => ['input_tokens' => 9]], new Meta(inputTokens: 9)],
+]);
+
+it('raises MalformedResponse for metadata of the wrong shape', function (array $root, string $message): void {
+    expect(fn () => metaFrom($root))->toThrow(MalformedResponse::class, $message);
+})->with([
+    'model not a string' => [['model' => 7], "The response's 'model' is not a string."],
+    'routing not an object' => [['routing' => 'english'], "The response's 'routing' is not an object."],
+    'routing a list' => [['routing' => ['english']], "The response's 'routing' is not an object."],
+    'routing model not a string' => [['routing' => ['model' => 1]], "The response's 'routing.model' is not a string."],
+    'routing reason not a string' => [['routing' => ['reason' => false]], "The response's 'routing.reason' is not a string."],
+    'usage not an object' => [['usage' => 74], "The response's 'usage' is not an object."],
+    'usage a list' => [['usage' => [1, 2]], "The response's 'usage' is not an object."],
+    'input tokens a string' => [['usage' => ['input_tokens' => '57']], "The response's 'usage.input_tokens' is not a non-negative integer."],
+    'input tokens negative' => [['usage' => ['input_tokens' => -1]], "The response's 'usage.input_tokens' is not a non-negative integer."],
+    'output tokens a float' => [['usage' => ['output_tokens' => 1.5]], "The response's 'usage.output_tokens' is not a non-negative integer."],
+]);
+
+it('has no latency when decode() is not given one', function (): void {
+    expect(metaFrom(['model' => 'laya-rl-agent'])->latencyMs)->toBeNull();
+});
 
 it('keeps the raw body on a MalformedResponse for debugging', function (): void {
     try {
