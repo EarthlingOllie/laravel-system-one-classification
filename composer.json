@@ -2,7 +2,7 @@
     "name": "earthlingollie/laravel-system-one-classification",
     "description": "A typed, immutable Laravel client for System 1 decision models (Laya, Jev and compatible models).",
     "type": "library",
-    "license": "Apache-2.0",
+    "license": "MIT",
     "keywords": [
         "laravel",
         "laya",

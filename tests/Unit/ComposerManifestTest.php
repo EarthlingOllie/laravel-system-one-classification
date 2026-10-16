@@ -36,3 +36,10 @@ it('exposes a composer script for every gate plus one that runs them all', funct
         'test', 'test:integration', 'test:coverage', 'analyse', 'format', 'format:check', 'mutate', 'check',
     ]);
 });
+
+it('declares the same licence as the LICENSE file', function (): void {
+    $licence = (string) file_get_contents(dirname(ComposerManifest::path()).'/LICENSE');
+
+    expect($licence)->toStartWith('MIT License')
+        ->and(ComposerManifest::read()['license'])->toBe('MIT');
+});
