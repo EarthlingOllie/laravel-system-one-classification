@@ -4,7 +4,7 @@
     "english": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851"
   },
   "checkpoint_source": "LAYA_REVISION resolved in the container (no checkpoint loaded)",
-  "recorded_at": "2026-10-16T07:47:24Z",
+  "recorded_at": "2026-10-16T08:07:26Z",
   "recorded_with": "bin/laya-record-fixtures",
   "server_openapi": "laya-serve-openapi.json",
   "scenarios": [

@@ -15,7 +15,9 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -103,6 +105,8 @@ def call(url, method, path, body, auth_header):
             return response.status, response.headers, response.read()
     except urllib.error.HTTPError as error:
         return error.code, error.headers, error.read()
+    except (urllib.error.URLError, OSError) as error:
+        raise Unreachable(getattr(error, "reason", error)) from None
 
 
 def laya_version_from_container():
@@ -139,51 +143,26 @@ def marked_answers(body):
             if a.get("low_confidence") or a.get("abstention") == "abstained"]
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--url", default=os.environ.get("SYSTEM_ONE_URL", "http://127.0.0.1:8000"))
-    parser.add_argument("--out", default=str(ROOT / "tests" / "Fixtures" / "laya"))
-    parser.add_argument("--laya-version", help="defaults to the version installed in the container")
-    parser.add_argument("--skip-inference", action="store_true",
-                        help="record only the scenarios answered before inference (auth, validation, "
-                             "limits, health), e.g. against LAYA_PRELOAD=0 without weights; the rest "
-                             "are listed as pending in the manifest")
-    args = parser.parse_args(argv)
+class Unreachable(Exception):
+    pass
 
-    key = os.environ.get("LAYA_API_KEY")
-    if not key:
-        print("LAYA_API_KEY must be set, and the server started with the same key, so the 401 "
-              "fixture can be recorded.", file=sys.stderr)
-        return 2
-    version = args.laya_version or laya_version_from_container()
-    if not version:
-        print("Could not read the laya version from the container; pass --laya-version.", file=sys.stderr)
-        return 2
 
-    out = Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
-    url = args.url.rstrip("/")
+def is_local(url):
+    return urllib.parse.urlsplit(url).hostname in ("127.0.0.1", "localhost", "::1")
+
+
+def write_json(path, payload):
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
+
+
+def record(url, key, skip_inference, staging):
+    """Record every scenario into `staging`. Returns (manifest parts, failures)."""
     auth = {"valid": ("Bearer " + key, "Bearer <valid-key>"),
             "wrong": ("Bearer " + WRONG_KEY, "Bearer <wrong-key>"),
             "none": (None, None)}
-
-    _, _, raw = call(url, "GET", "/health", None, auth["valid"][0])
-    health = json.loads(raw)
-    revisions = health.get("revisions") or {}
-    checkpoint_source = "GET /health (loaded checkpoints)"
-    if not revisions:
-        revisions = pinned_revisions_from_container()
-        checkpoint_source = "LAYA_REVISION resolved in the container (no checkpoint loaded)"
-    if not revisions:
-        print("Could not tell which checkpoint revision the server uses: nothing is loaded and the "
-              "container could not be asked.", file=sys.stderr)
-        return 2
-
-    pending = {}
-
-    manifest_scenarios, failures = [], []
+    scenarios, pending, failures = [], {}, []
     for name, description, method, path, body, auth_kind, expected in SCENARIOS:
-        if args.skip_inference and needs_model(path, expected):
+        if skip_inference and needs_model(path, expected):
             pending[name] = "not recorded: --skip-inference (needs the checkpoint weights loaded)"
             print("%-28s pending" % name)
             continue
@@ -198,45 +177,112 @@ def main(argv=None):
             request_headers["Content-Type"] = "application/json"
         if recorded_header:
             request_headers["Authorization"] = recorded_header
-        fixture = {
+        file = name + ".json"
+        write_json(staging / file, {
             "scenario": name,
             "description": description,
             "request": {"method": method, "path": path, "headers": request_headers, "body": body},
             "response": {"status": status,
                          "headers": {h: headers[h] for h in KEPT_HEADERS if headers.get(h)},
                          "body": response_body},
-        }
-        file = name + ".json"
-        (out / file).write_text(json.dumps(fixture, indent=2, ensure_ascii=False) + "\n")
+        })
         entry = {"name": name, "file": file, "status": status, "description": description}
         if headers.get("x-inference-time-ms"):
             entry["inference_ms"] = float(headers["x-inference-time-ms"])
-        manifest_scenarios.append(entry)
+        scenarios.append(entry)
         if status != expected:
             failures.append("%s: expected HTTP %d, got %d: %s" % (name, expected, status, response_body))
-        elif name.startswith(("below_min_confidence", "batch_below_min_confidence")) \
-                and not marked_answers(response_body):
+        elif "below_min_confidence" in name and not marked_answers(response_body):
             failures.append("%s: no answer was marked low confidence; pick a more ambiguous state" % name)
         print("%-28s %d" % (name, status))
 
-    (out / "laya-serve-openapi.json").write_text(
-        json.dumps(json.loads(call(url, "GET", "/openapi.json", None, None)[2]), indent=2) + "\n")
-    manifest = {
-        "laya_version": version,
-        "checkpoints": revisions,
-        "checkpoint_source": checkpoint_source,
-        "recorded_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "recorded_with": "bin/laya-record-fixtures",
-        "server_openapi": "laya-serve-openapi.json",
-        "scenarios": manifest_scenarios,
-        "pending": pending,
-    }
-    (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    status, _, raw = call(url, "GET", "/openapi.json", None, None)
+    try:
+        spec = json.loads(raw)
+    except ValueError:
+        spec = None
+    if status != 200 or not isinstance(spec, dict) or "openapi" not in spec:
+        failures.append("GET /openapi.json: expected an OpenAPI document, got HTTP %d" % status)
+    else:
+        write_json(staging / "laya-serve-openapi.json", spec)
+    return scenarios, pending, failures
 
-    if failures:
-        print("\n".join(["Recording did not match expectations:"] + failures), file=sys.stderr)
-        return 1
-    print("Recorded %d fixtures into %s" % (len(manifest_scenarios), out))
+
+def publish(staging, out):
+    """Replace the generated files in `out` with the ones in `staging`, leaving no stale fixture."""
+    out.mkdir(parents=True, exist_ok=True)
+    for old in out.glob("*.json"):
+        old.unlink()
+    for new in staging.glob("*.json"):
+        os.replace(new, out / new.name)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("--url", default=os.environ.get("SYSTEM_ONE_URL", "http://127.0.0.1:8000"))
+    parser.add_argument("--out", default=str(ROOT / "tests" / "Fixtures" / "laya"))
+    parser.add_argument("--laya-version",
+                        help="the server's laya version; read from the local container when --url is local")
+    parser.add_argument("--skip-inference", action="store_true",
+                        help="record only the scenarios answered before inference (auth, validation, "
+                             "limits, health), e.g. against LAYA_PRELOAD=0 without weights; the rest "
+                             "are listed as pending in the manifest")
+    args = parser.parse_args(argv)
+    url = args.url.rstrip("/")
+    local = is_local(url)
+
+    key = os.environ.get("LAYA_API_KEY")
+    if not key:
+        print("LAYA_API_KEY must be set, and the server started with the same key, so the 401 "
+              "fixture can be recorded.", file=sys.stderr)
+        return 2
+    version = args.laya_version or (laya_version_from_container() if local else None)
+    if not version:
+        where = "the local container" if local else "a server that is not local"
+        print("Could not read the laya version from %s; pass --laya-version." % where, file=sys.stderr)
+        return 2
+
+    try:
+        _, _, raw = call(url, "GET", "/health", None, "Bearer " + key)
+        health = json.loads(raw)
+        # A checkpoint loaded from a local path reports null: that names no Hub commit.
+        revisions = {n: sha for n, sha in (health.get("revisions") or {}).items() if sha}
+        checkpoint_source = "GET /health (loaded checkpoints)"
+        if not revisions and local:
+            revisions = pinned_revisions_from_container()
+            checkpoint_source = "LAYA_REVISION resolved in the container (no checkpoint loaded)"
+        if not revisions:
+            print("Could not tell which checkpoint revision the server uses: nothing is loaded%s."
+                  % (" and the container could not be asked" if local else ""), file=sys.stderr)
+            return 2
+
+        out = Path(args.out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=out.parent, prefix=".laya-fixtures-") as tmp:
+            staging = Path(tmp)
+            scenarios, pending, failures = record(url, key, args.skip_inference, staging)
+            if failures:
+                print("\n".join(["Recording did not match expectations; %s was left unchanged:" % out]
+                                + failures), file=sys.stderr)
+                return 1
+            write_json(staging / "manifest.json", {
+                "laya_version": version,
+                "checkpoints": revisions,
+                "checkpoint_source": checkpoint_source,
+                "recorded_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "recorded_with": "bin/laya-record-fixtures",
+                "server_openapi": "laya-serve-openapi.json",
+                "scenarios": scenarios,
+                "pending": pending,
+            })
+            publish(staging, out)
+    except Unreachable as error:
+        print("could not reach laya-serve at %s: %s" % (url, error), file=sys.stderr)
+        return 2
+    except ValueError:
+        print("%s/health did not answer JSON; is that a laya-serve?" % url, file=sys.stderr)
+        return 2
+    print("Recorded %d fixtures into %s" % (len(scenarios), out))
     return 0
 
 

@@ -1,5 +1,6 @@
 """bin/laya-record-fixtures, driven against a small stand-in for laya-serve."""
 import json
+import socket
 import subprocess
 import sys
 import tempfile
@@ -27,9 +28,11 @@ MODEL_SCENARIOS = {
 class MiniLaya:
     """Enough of laya-serve's rules to exercise every scenario the recorder sends."""
 
-    def __init__(self, abstain=True):
+    def __init__(self, abstain=True, openapi_status=200, revisions=None):
         owner = self
+        self.revisions = {"english": REVISION} if revisions is None else revisions
         self.abstain = abstain
+        self.openapi_status = openapi_status
 
         class Handler(BaseHTTPRequestHandler):
             def _send(self, status, payload, extra=None):
@@ -50,9 +53,11 @@ class MiniLaya:
                 if self.path == "/health":
                     payload = {"status": "ok"}
                     if self._authorized():
-                        payload.update(loaded=["english"], revisions={"english": REVISION})
+                        payload.update(loaded=list(owner.revisions), revisions=owner.revisions)
                     return self._send(200, payload)
                 if self.path == "/openapi.json":
+                    if owner.openapi_status != 200:
+                        return self._send(owner.openapi_status, {"detail": "Internal Server Error"})
                     return self._send(200, {"openapi": "3.1.0", "info": {"title": "laya-serve"}})
                 self._send(404, {"detail": "Not Found"})
 
@@ -176,6 +181,72 @@ class RecorderTest(unittest.TestCase):
     def test_a_full_recording_leaves_nothing_pending(self):
         _, out = self.record(self.laya)
         self.assertEqual(json.loads((out / "manifest.json").read_text())["pending"], {})
+
+    def seed_existing_fixtures(self):
+        out = Path(self.tmp.name)
+        (out / "manifest.json").write_text('{"old": true}\n')
+        (out / "unauthorized_bad_key.json").write_text('{"old": true}\n')
+        (out / "choice.json").write_text('{"old": true}\n')
+        return out
+
+    def assert_untouched(self, out):
+        for name in ("manifest.json", "unauthorized_bad_key.json", "choice.json"):
+            self.assertEqual((out / name).read_text(), '{"old": true}\n', name)
+
+    def test_a_failed_recording_leaves_the_existing_fixtures_untouched(self):
+        out = self.seed_existing_fixtures()
+        laya = MiniLaya(abstain=False)
+        self.addCleanup(laya.close)
+        result, _ = self.record(laya)
+        self.assertNotEqual(result.returncode, 0)
+        self.assert_untouched(out)
+
+    def test_a_broken_openapi_response_fails_without_touching_fixtures(self):
+        out = self.seed_existing_fixtures()
+        laya = MiniLaya(openapi_status=500)
+        self.addCleanup(laya.close)
+        result, _ = self.record(laya)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("Traceback", result.stderr)
+        self.assertIn("openapi", result.stderr)
+        self.assert_untouched(out)
+
+    def test_skip_inference_removes_fixtures_of_pending_scenarios(self):
+        out = self.seed_existing_fixtures()
+        result, _ = self.record(self.laya, "--skip-inference")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((out / "choice.json").exists())
+
+    def test_an_unreachable_server_is_a_clear_error(self):
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", 0))
+            port = s.getsockname()[1]
+        result = subprocess.run([sys.executable, str(RECORDER), "--url", "http://127.0.0.1:%d" % port,
+                                 "--out", self.tmp.name, "--laya-version", "0.4.8"],
+                                capture_output=True, text=True, timeout=60,
+                                env=clean_env({"LAYA_API_KEY": KEY}))
+        self.assertEqual(result.returncode, 2)
+        self.assertNotIn("Traceback", result.stderr)
+        self.assertIn("could not reach", result.stderr)
+
+    def test_a_checkpoint_without_a_revision_is_not_provenance(self):
+        # A local-path checkpoint reports revision null; that names no Hub commit.
+        laya = MiniLaya(revisions={"mine": None})
+        self.addCleanup(laya.close)
+        result = subprocess.run([sys.executable, str(RECORDER), "--url", laya.url.replace("127.0.0.1", "localhost"),
+                                 "--out", self.tmp.name, "--laya-version", "0.4.8"],
+                                capture_output=True, text=True, timeout=60,
+                                env=clean_env({"LAYA_API_KEY": KEY, "PATH": "/nonexistent"}))
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("revision", result.stderr)
+
+    def test_a_remote_server_needs_its_version_given_explicitly(self):
+        # The local container cannot vouch for a server somewhere else.
+        result = subprocess.run([sys.executable, str(RECORDER), "--url", "http://laya.example.invalid:8000",
+                                 "--out", self.tmp.name], capture_output=True, text=True, timeout=60,
+                                env=clean_env({"LAYA_API_KEY": KEY}))
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("--laya-version", result.stderr)
 
     def test_it_needs_the_server_key_to_record_the_401(self):
         result = subprocess.run([sys.executable, str(RECORDER), "--url", self.laya.url,
