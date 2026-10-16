@@ -43,7 +43,39 @@
             ]
         }
     },
+    "scripts": {
+        "analyse": "@php vendor/bin/phpstan analyse --memory-limit=1G --no-progress",
+        "check": [
+            "@format:check",
+            "@analyse",
+            "@test",
+            "@test:coverage",
+            "@mutate"
+        ],
+        "format": "@php vendor/bin/pint",
+        "format:check": "@php vendor/bin/pint --test",
+        "mutate": "@php tools/mutate.php --threads=max --with-uncovered --show-mutations --no-progress",
+        "test": "@php vendor/bin/pest",
+        "test:coverage": [
+            "@putenv XDEBUG_MODE=coverage",
+            "@php -r \"@unlink('build/coverage/coverage.cov');\"",
+            "@php vendor/bin/pest --path-coverage --coverage-php=build/coverage/coverage.cov --coverage-clover=build/coverage/clover.xml",
+            "@php tools/check-coverage.php build/coverage/coverage.cov"
+        ],
+        "test:integration": "@php vendor/bin/pest --testsuite=Integration"
+    },
+    "scripts-descriptions": {
+        "analyse": "PHPStan at max level with strict rules, including the assertType() files in tests/Types.",
+        "check": "Run every quality gate, as CI does.",
+        "format": "Fix code style with Laravel Pint.",
+        "format:check": "Check code style with Laravel Pint without changing files.",
+        "mutate": "Infection mutation testing (MSI >= 90, covered MSI 100).",
+        "test": "Unit, Contract, Feature and Arch suites.",
+        "test:coverage": "Tests with Xdebug path coverage; fails below 100% of lines or branches of src/.",
+        "test:integration": "Integration suite against a running Laya server."
+    },
     "config": {
+        "process-timeout": 0,
         "sort-packages": true,
         "allow-plugins": {
             "infection/extension-installer": true,

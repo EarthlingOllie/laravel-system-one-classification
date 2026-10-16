@@ -1,0 +1,26 @@
+{
+    "$schema": "vendor/infection/infection/resources/schema.json",
+    "source": {
+        "directories": ["src"]
+    },
+    // Infection dropped its Pest adapter, but Pest's CLI is PHPUnit-compatible, so the
+    // PHPUnit adapter drives vendor/bin/pest. The default suites from phpunit.xml.dist
+    // are used, so Integration (live Laya server) is never part of a mutation run.
+    "testFramework": "phpunit",
+    "phpUnit": {
+        "customPath": "tools/pest-for-infection"
+    },
+    "tmpDir": "build/infection/tmp",
+    "logs": {
+        "text": "build/infection/infection.log",
+        "summary": "build/infection/summary.log",
+        "github": true
+    },
+    "mutators": {
+        "@default": true
+    },
+    // Run with --with-uncovered (see `composer mutate`) so that uncovered code counts
+    // against the MSI instead of being skipped.
+    "minMsi": 90,
+    "minCoveredMsi": 100
+}
