@@ -37,6 +37,11 @@ it('raises the codec error for an error response', function (): void {
         {
             return new Response(503, '{"detail":"server busy"}');
         }
+
+        public function get(string $path): Response
+        {
+            return new Response(503, '{"detail":"server busy"}');
+        }
     };
     $decision = Decision::about(Context::text('x'))->ask(Question::yesNo('churn', 'Cancel?'));
 
