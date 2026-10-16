@@ -40,6 +40,17 @@ it('can be iterated more than once', function (): void {
     expect(iterator_to_array($set))->toBe($results);
 });
 
+it('cannot be changed through its iterator', function (): void {
+    [$set, $results] = threeResults();
+
+    $iterator = $set->getIterator();
+    $iterator[0] = churnResult(0.3);
+    unset($iterator[1]);
+
+    expect($set->all())->toBe($results)
+        ->and(iterator_to_array($set))->toBe($results);
+});
+
 it('counts its results', function (): void {
     [$set] = threeResults();
 

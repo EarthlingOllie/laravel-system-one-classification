@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace EarthlingOllie\SystemOneClassification\Result;
 
 use ArrayAccess;
+use ArrayIterator;
 use Countable;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidResultSetAccess;
-use Generator;
 use IteratorAggregate;
 
 use function count;
@@ -59,11 +59,15 @@ final readonly class ResultSet implements ArrayAccess, Countable, IteratorAggreg
     }
 
     /**
-     * @return Generator<int, Result>
+     * An iterator over a copy of the results: writing through it cannot change the set.
+     *
+     * Not a generator: Xdebug's path coverage (`composer test:coverage`) segfaults on one.
+     *
+     * @return ArrayIterator<int, Result>
      */
-    public function getIterator(): Generator
+    public function getIterator(): ArrayIterator
     {
-        yield from $this->results;
+        return new ArrayIterator($this->results);
     }
 
     /**
