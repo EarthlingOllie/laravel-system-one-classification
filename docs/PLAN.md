@@ -10,7 +10,17 @@ A typed Laravel client for System 1 decision models (Laya, Jev and compatible mo
 | 2 | AWS / Bedrock | Out of scope for now. There is no AWS connection or SigV4 transport in v1. |
 | 3 | Confidence | Every answer exposes both `confidence` values. `answerConfidence` (the probability of the reported answer) is what you threshold on, because it can be compared across models. The raw `confidence` is kept and tagged with the model profile that produced it. |
 | 4 | Local provisioning | A standalone `compose.yaml` is the primary path, with an optional Laravel Sail service. Both are offered by `system-one:install`. |
-| 5 | PHP version | PHP 8.4 minimum (with Laravel 13, which supports 8.4). We use property hooks and asymmetric visibility to keep the value objects simple. |
+| 5 | PHP version | PHP 8.4 minimum, with Laravel 13. Value objects are kept as simple as possible (see Quality bar). |
+| 6 | Vendor | `earthlingollie`. |
+| 7 | Framework coupling | One Laravel package that depends on `illuminate/http`. Everything outside `src/Laravel/` stays free of other framework imports. |
+| 8 | Question identity | Explicit string keys (`Question::choice('department', …)`). The question object is the handle you read results with. |
+| 9 | Enum conventions | Descriptions come from `#[Describe]` on each case, with an optional `DescribesCases` interface for translated text. Score order follows the int backing value. |
+| 10 | Abstention | `value` always holds the model's best guess. A separate `abstained` flag marks low-confidence answers. |
+| 11 | Decision classes | Question handles only in v1. Attribute-driven DTOs may come later. |
+| 12 | Local image | Built on the dev machine from our Dockerfile; there is no published image. Loads only the English checkpoint by default; multilingual is opt-in. |
+| 13 | Sync and batch | `decide()` and `decideMany()` (the batch endpoint) are synchronous. Queued and concurrent dispatch come later. |
+| 14 | Caching and data | Caching is off by default. Context text is never logged or put in events by default. Remote connections (`laya-hosted`, `jev`) are used only when they are configured explicitly with a key; the default connection is always `local`. |
+| 15 | Quality | All code is immutable and fully tested, as defined in the Quality bar section below. |
 
 ## Goal
 
@@ -182,16 +192,16 @@ $result->get($urgency)->expected;                            // 1.7 (expected or
 $result->get($churn)->probability;                           // 0.91
 $result->get($churn)->isYes(threshold: 0.8);                 // bool
 $result->get($churn)->verdict(yes: 0.8, no: 0.2);            // Verdict::Yes | No | Unsure
-$result->get($department)->abstained();                      // true if below min_confidence
+$result->get($department)->abstained;                        // true if below min_confidence
 $result->meta;                                               // model / checkpoint used, routing reason, usage, latency
 ```
 
 How the typing works:
-- **Everything is immutable.** Value objects are `final` classes whose
-  properties use PHP 8.4 asymmetric visibility (`public private(set)`), with
-  property hooks for derived values such as `isConfident`. There are no getter
-  methods. Builder methods (`ask`, `withMinConfidence`, `withModel`) return a
-  new instance.
+- **Everything is immutable.** Every value object is a `final readonly class`
+  with promoted public properties. Derived values are methods
+  (`isConfident(0.8)`, `probabilityOf(...)`). Builder methods (`ask`,
+  `withMinConfidence`, `withModel`) return a new instance. See the Quality bar
+  for why this uses `readonly` rather than property hooks.
 - **Typed results without casting, through generics.** The answer type is a
   PHPStan or Psalm generic. `ChoiceQuestion<TEnum of BackedEnum>` extends
   `Question<ChoiceAnswer<TEnum>>`, and `Result::get(Question<TAnswer>): TAnswer`
@@ -264,6 +274,51 @@ docker/
 tests/{Unit,Contract,Integration}
 ```
 
+## Quality bar
+
+### Immutability
+
+- **Every value object, answer, result, profile, connection config and the
+  client itself is a `final readonly class`.** The engine then rejects any
+  write after construction. This is why we don't use asymmetric visibility
+  (`public private(set)`) or property hooks: `private(set)` still allows the
+  class to change its own state, and PHP 8.4 doesn't allow hooks on readonly
+  properties. Derived values are plain methods instead.
+- Collections (questions in a `Decision`, answers in a `Result`, a
+  `Distribution`) are built once and exposed only through read methods. They
+  never expose a mutable array by reference.
+- Every `with*()` method returns a new instance. Tests prove the original is
+  unchanged.
+- Pest architecture tests enforce all of this: every class in the domain,
+  result, model and protocol namespaces must be `final` and `readonly`, and
+  the core namespaces must not import `Illuminate\*`.
+- The only stateful pieces are Laravel singletons and the testing fake, which
+  records the decisions sent to it. Both live under `src/Laravel/`.
+
+### Testing
+
+- **Tools:** Pest 3 on Orchestra Testbench (Laravel 13, PHP 8.4), PHPStan at
+  max level with strict rules, Laravel Pint, and Infection for mutation
+  testing.
+- **CI gates, all required on every pull request:**
+  - 100% line and branch coverage of `src/`.
+  - Infection MSI ≥ 90% (covered-code MSI 100%).
+  - PHPStan max with no baseline.
+  - Pint.
+  - Architecture tests.
+- **Test layers:**
+  - **Unit:** every value object, validation rule and error path.
+  - **Type inference:** PHPStan `assertType()` files prove
+    `$result->get($q)->value` comes out as the right enum without casting.
+  - **Contract:** the codec is checked against fixtures recorded from a real
+    `laya-serve`, and request bodies are checked against Jev's OpenAPI schema.
+  - **Feature (Testbench):** the service provider, config, facade, fake,
+    commands and events.
+  - **Integration:** a separate suite runs against the Docker container in CI.
+    It is tagged so local runs can skip it when Docker isn't running.
+- Each ticket lands with its own tests, and nothing merges with a gate
+  failing.
+
 ## Phases
 
 0. **Spike and verify (about 1 day).**
@@ -292,34 +347,5 @@ tests/{Unit,Contract,Integration}
 
 ## Open architectural questions
 
-Questions 1 to 5 from the first draft are settled (see the decisions table at
-the top). These are still open, and each has a recommendation:
-
-1. **Vendor name.** Should we publish as `earthlingollie/…`, or under an
-   organisation?
-2. **Laravel-only, or a framework-agnostic core?** *Recommendation: ship one
-   Laravel package that depends on `illuminate/http`, but keep everything
-   outside `src/Laravel/` free of other framework imports.*
-3. **Question identity.** *Recommendation: explicit string keys
-   (`Question::choice('department', …)`), because they stay stable in logs,
-   caches and fixtures.*
-4. **Enum conventions.** *Recommendation: descriptions from a `#[Describe]`
-   attribute, with an optional `DescribesCases` interface for translated text.
-   Score order follows the int backing value.*
-5. **Abstention typing.** *Recommendation: `value` always holds the model's best
-   guess, and a separate `abstained` flag marks low-confidence answers.
-   Otherwise every read of a nullable value needs a null check.*
-6. **Declarative "decision classes"** (readonly DTOs whose constructor
-   parameters carry `#[Ask]`). *Recommendation: question handles in v1,
-   consider DTOs later.*
-7. **Local image.** Do we build from our Dockerfile on the dev machine, or
-   publish a prebuilt image to GHCR? *Recommendation: build locally in v1.*
-   Which checkpoints are loaded by default? *Recommendation: English only,
-   with multilingual opt-in.*
-8. **Sync, batch and queues.** *Recommendation: synchronous `decide()` and
-   `decideMany()` (the batch endpoint) in v1. Queued and concurrent dispatch
-   later.*
-9. **Caching and data handling.** *Recommendation: caching off by default, and
-   context text never logged by default.* The `laya-hosted` and `jev`
-   connections send text to third parties; does that need a guard, such as an
-   explicit opt-in per connection?
+None. Everything raised so far is settled in the decisions table. New
+questions get added here as they come up.
