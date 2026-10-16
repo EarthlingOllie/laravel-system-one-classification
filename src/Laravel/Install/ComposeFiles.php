@@ -9,15 +9,16 @@ use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
 
 use function array_is_list;
-use function data_get;
 use function array_map;
 use function array_slice;
 use function array_splice;
+use function data_get;
 use function explode;
 use function file_get_contents;
 use function implode;
 use function is_array;
 use function preg_match;
+use function preg_match_all;
 use function rtrim;
 use function str_repeat;
 use function str_replace;
