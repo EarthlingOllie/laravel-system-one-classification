@@ -305,20 +305,49 @@ How the typing works:
   `$result->get($department)->value` is a `Department`.
 - **Questions are handles.** You keep the question object and pass it back to
   `get()`. The string key exists only so the wire format and logs stay stable.
+  As built in #3: `Question` is a `final readonly` factory (`Question::yesNo()`
+  …), and the generic type every question implements is
+  `Question\QuestionHandle<TAnswer>` (`key`, `instructions`, `answerType()`), so
+  `Result::get(QuestionHandle<TAnswer>): TAnswer`. Handles compare by value: an
+  equal handle built elsewhere reads the same answer, but one that only shares
+  the key is refused (`UnknownQuestion`). Keys follow `Question\QuestionKey`:
+  not blank, and not a whole number such as `'0'` (PHP would make it an
+  integer array key and the questions would go out as a JSON list).
 - **Enums drive the options.** `choice` and `score` take a `BackedEnum`
   class-string. Labels come from backing values, and descriptions come from a
   `#[Describe]` attribute on each case. A `score` enum must describe every case,
   because Laya requires it.
-- **Typed errors.**
-  - `InvalidDecision`: a profile limit was broken, caught before sending.
-  - `HostUnavailable`: transport errors or 503 responses.
-  - `RejectedByModel`: the server returned 4xx.
-  - `MalformedResponse`: the response JSON didn't match what we expected.
+- **Typed errors.** Every exception the package throws implements the
+  `Exceptions\SystemOneException` marker (enforced by the architecture tests,
+  including a scan of every `throw` in `src/`).
+  - `InvalidDecision`: the decision can't be sent (blank text or key, a
+    whole-number or repeated key, no questions, an unknown question type, and
+    later a broken profile limit), always raised before anything is sent.
+  - `UnknownQuestion`: `Result::get()` was given a handle the decision didn't ask.
+  - `InvalidProbability`: a probability or threshold outside [0, 1], or a no
+    threshold above the yes threshold.
+  - `InvalidConfiguration`: `config/system-one.php` doesn't describe a usable
+    connection.
+  - `HostUnavailable`: the server couldn't be reached, or answered with any 5xx.
+    The message is redacted (`Transport\Redactor`: URL credentials, query
+    values and the API key), and the HTTP client's exception isn't chained.
+  - `RejectedByModel`: the server returned 4xx (`status`, `detail`).
+  - `MalformedResponse`: the status or JSON didn't match the protocol (`body`
+    holds the raw response).
+- **One dispatch per question type.** `SystemOneCodec::wire()` maps each
+  question type to both its request and its answer decoder, so a type can't be
+  sent without being readable back.
 
 ### Laravel integration
 
 - `config/system-one.php` has a default connection and named connections, each
-  with its own profile.
+  with its own profile. Built in #3: published with
+  `vendor:publish --tag=system-one-config`; `default` from
+  `SYSTEM_ONE_CONNECTION` (`local`); `local` takes `url` from `SYSTEM_ONE_URL`
+  (`http://localhost:8000`), `api_key` from `SYSTEM_ONE_API_KEY` (empty means
+  none) and `timeout` from `SYSTEM_ONE_TIMEOUT` (seconds; empty means 30).
+  `SystemOneManager` reads the config on every call, so runtime `config()`
+  changes apply.
 - A singleton is bound in the container and exposed through a `SystemOne`
   facade.
 - `SystemOne::fake([...])` returns scripted answers and lets tests assert on the
@@ -385,13 +414,15 @@ bin/
 
 ```
 src/
-  Domain/        Context, Decision, Question/{Choice,Score,YesNo}Question, Describe attribute
-  Result/        Result, ResultSet, Answer/{Choice,Score,YesNo}Answer, Distribution, Verdict, Meta
+  Domain/        Context, Decision, Question (factory), Question/{QuestionHandle,QuestionKey,
+                 Choice,Score,YesNoQuestion}, Describe attribute
+  Result/        Result, ResultSet, Answer/{Answer,Choice,Score,YesNoAnswer}, Distribution, Verdict, Meta
   Model/         ModelProfile, LayaProfile, JevProfile
   Protocol/      SystemOneCodec (request/response mapping)
-  Transport/     Transport, HttpTransport, FakeTransport
-  Laravel/       SystemOneServiceProvider, Facades/SystemOne, Commands/*, Events/*, Testing/Fake
-  Exceptions/
+  Transport/     Transport, HttpTransport, Response, Redactor, FakeTransport
+  Client/        DecisionClient (one per connection)
+  Laravel/       SystemOneServiceProvider, SystemOneManager, Facades/SystemOne, Commands/*, Events/*, Testing/Fake
+  Exceptions/    SystemOneException marker and the typed errors above
 config/system-one.php
 docker/
 tests/{Unit,Contract,Integration}
