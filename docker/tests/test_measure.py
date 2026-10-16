@@ -1,4 +1,6 @@
 """bin/laya-measure: latency figures from a running laya-serve."""
+import importlib.machinery
+import importlib.util
 import json
 import subprocess
 import sys
@@ -37,6 +39,24 @@ class TimedLaya:
     def close(self):
         self.server.shutdown()
         self.server.server_close()
+
+
+def load_measure():
+    loader = importlib.machinery.SourceFileLoader("laya_measure", str(MEASURE))
+    spec = importlib.util.spec_from_loader("laya_measure", loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+class SummaryTest(unittest.TestCase):
+    def test_p95_is_the_nearest_rank(self):
+        summary = load_measure().summary
+        # Nearest rank: the ceil(0.95 n)-th smallest value.
+        self.assertEqual(summary(range(1, 31))["p95"], 29)    # ceil(28.5) = 29
+        self.assertEqual(summary(range(1, 21))["p95"], 19)    # ceil(19) = 19
+        self.assertEqual(summary(range(1, 71))["p95"], 67)    # ceil(66.5) = 67
+        self.assertEqual(summary([5])["p95"], 5)
 
 
 class MeasureTest(unittest.TestCase):
