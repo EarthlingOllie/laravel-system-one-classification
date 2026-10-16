@@ -103,7 +103,7 @@ final readonly class SystemOneCodec
                 throw MalformedResponse::because("The answer for '{$question->key}' is not an object.", $response->body);
             }
 
-            $decoded[$question->key] = ['question' => $question, 'answer' => self::wire($question)['decode']($answer, $response->body)];
+            $decoded[$question->key] = ['question' => $question, 'answer' => self::wire($question)['decode']($answer, $response->body, $decision->minConfidence !== null)];
         }
 
         return new Result($decoded, self::decodeMeta($body, $response->body, $latencyMs));
@@ -132,7 +132,7 @@ final readonly class SystemOneCodec
      * any other type is refused by encode(), before DecisionClient sends anything.
      *
      * @param  QuestionHandle<Answer>  $question
-     * @return array{request: array<string, mixed>, decode: Closure(array<mixed>, string): Answer}
+     * @return array{request: array<string, mixed>, decode: Closure(array<mixed>, string, bool): Answer}
      *
      * @throws InvalidDecision
      */
@@ -141,7 +141,7 @@ final readonly class SystemOneCodec
         return match (true) {
             $question instanceof YesNoQuestion => [
                 'request' => ['type' => 'noul', 'instructions' => $question->instructions],
-                'decode' => static fn (array $answer, string $body): YesNoAnswer => self::decodeYesNo($question->key, $answer, $body),
+                'decode' => static fn (array $answer, string $body, bool $gated): YesNoAnswer => self::decodeYesNo($question->key, $answer, $body, $gated),
             ],
             default => throw InvalidDecision::unsupportedQuestion($question),
         };
@@ -149,8 +149,9 @@ final readonly class SystemOneCodec
 
     /**
      * @param  array<mixed>  $answer
+     * @param  bool  $gated  whether the decision set a minimum confidence
      */
-    private static function decodeYesNo(string $key, array $answer, string $body): YesNoAnswer
+    private static function decodeYesNo(string $key, array $answer, string $body, bool $gated): YesNoAnswer
     {
         $type = $answer['type'] ?? null;
 
@@ -168,7 +169,7 @@ final readonly class SystemOneCodec
             throw MalformedResponse::because("The answer for '{$key}' has a 'noul' probability outside [0, 1]: {$probability}.", $body);
         }
 
-        return new YesNoAnswer((float) $probability, ...self::decodeAbstention($key, $answer, $body));
+        return new YesNoAnswer((float) $probability, ...self::decodeAbstention($key, $answer, $body, $gated));
     }
 
     /**
@@ -177,12 +178,16 @@ final readonly class SystemOneCodec
      * and `low_confidence: true` on abstained answers only.
      *
      * `abstention` decides. A server that sends only `low_confidence` (none of the recorded
-     * ones do) reads as abstained when it is true. With neither field, no gate ran.
+     * ones do) reads as abstained when it is true. With neither field, the answer reads as
+     * NotRequested when the decision set no minimum confidence, and as Unevaluated when it did:
+     * a gate was asked for but the server gave no verdict, and a missing `low_confidence` is not
+     * a pass (Laya also leaves it off answers it could not evaluate).
      *
      * @param  array<mixed>  $answer
+     * @param  bool  $gated  whether the decision set a minimum confidence
      * @return array{abstention: Abstention, abstentionThreshold: int|float|null} the answer constructor's named arguments
      */
-    private static function decodeAbstention(string $key, array $answer, string $body): array
+    private static function decodeAbstention(string $key, array $answer, string $body, bool $gated): array
     {
         $state = $answer['abstention'] ?? null;
         $lowConfidence = $answer['low_confidence'] ?? false;
@@ -193,7 +198,11 @@ final readonly class SystemOneCodec
         }
 
         $abstention = match ($state) {
-            null => $lowConfidence ? Abstention::Abstained : Abstention::NotRequested,
+            null => match (true) {
+                $lowConfidence => Abstention::Abstained,
+                $gated => Abstention::Unevaluated,
+                default => Abstention::NotRequested,
+            },
             'passed' => Abstention::Passed,
             'abstained' => Abstention::Abstained,
             'unevaluated' => Abstention::Unevaluated,

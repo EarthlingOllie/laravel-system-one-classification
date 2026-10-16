@@ -21,6 +21,9 @@ enum Abstention
     /** The answer's confidence fell below the minimum (`"abstained"`): send it to a human. */
     case Abstained;
 
-    /** A gate ran but the answer carried no usable confidence to compare (`"unevaluated"`). */
+    /**
+     * The decision set a minimum confidence but the gate gave no verdict: the server reported
+     * `"unevaluated"` (no usable confidence to compare), or sent no gate fields at all.
+     */
     case Unevaluated;
 }

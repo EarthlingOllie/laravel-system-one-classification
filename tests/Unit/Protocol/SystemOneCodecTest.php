@@ -191,6 +191,20 @@ it('reads the abstention gate of an answer', function (array $gate, Abstention $
     'abstention wins over low_confidence' => [['low_confidence' => true, 'abstention' => 'passed', 'abstention_threshold' => 0.5], Abstention::Passed, false, 0.5],
 ]);
 
+it('reads a gated answer that reports no gate verdict as Unevaluated, neither NotRequested nor Passed', function (array $gate, Abstention $abstention, bool $abstained): void {
+    $answer = (new SystemOneCodec)->decode(churnDecision()->withMinConfidence(0.6), okResponse([
+        'answers' => ['churn' => ['type' => 'noul', 'noul' => 0.73, ...$gate]],
+    ]))->get(Question::yesNo('churn', 'Does the customer threaten to cancel?'));
+
+    expect($answer->abstention)->toBe($abstention)
+        ->and($answer->abstained)->toBe($abstained)
+        ->and($answer->abstentionThreshold)->toBeNull();
+})->with([
+    'no gate fields' => [[], Abstention::Unevaluated, false],
+    'low_confidence false' => [['low_confidence' => false], Abstention::Unevaluated, false],
+    'low_confidence true' => [['low_confidence' => true], Abstention::Abstained, true],
+]);
+
 it('raises MalformedResponse for abstention fields of the wrong shape', function (array $gate, string $message): void {
     expect(fn () => churnAnswerWith($gate))->toThrow(MalformedResponse::class, $message);
 })->with([

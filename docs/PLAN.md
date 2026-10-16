@@ -519,3 +519,13 @@ New questions get added here as they come up.
    and `low_confidence: true` without it reads as `Abstained`. The codec reads
    all three fields in one helper (`decodeAbstention`), which each new answer
    type's decoder spreads into its constructor.
+
+   An answer with neither `abstention` nor `low_confidence: true` reads as
+   `NotRequested` only when the decision set no `min_confidence`. When it did,
+   the answer reads as `Unevaluated`: a gate was asked for and the server gave
+   no verdict. It does not read as `Passed`, because a missing (or `false`)
+   `low_confidence` is not a pass. Laya also leaves the flag off answers it
+   could not evaluate, and its gate docs call reporting those as a pass "the
+   same lie as reporting it as a flag". Laya 0.4.8 always sends `abstention`
+   when `min_confidence` is set (live and in the fixtures), so this only
+   applies to a host that does not, such as Jev, whose spec is still unknown.
