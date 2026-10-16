@@ -1,0 +1,77 @@
+<?php
+
+declare(strict_types=1);
+
+namespace EarthlingOllie\SystemOneClassification\Laravel;
+
+use EarthlingOllie\SystemOneClassification\Client\DecisionClient;
+use EarthlingOllie\SystemOneClassification\Domain\Decision;
+use EarthlingOllie\SystemOneClassification\Protocol\SystemOneCodec;
+use EarthlingOllie\SystemOneClassification\Result\Result;
+use EarthlingOllie\SystemOneClassification\Transport\HttpTransport;
+use Illuminate\Contracts\Config\Repository;
+use Illuminate\Http\Client\Factory;
+use InvalidArgumentException;
+
+/**
+ * What the SystemOne facade resolves to: builds a DecisionClient per configured connection
+ * (config/system-one.php) and sends decisions to the default one.
+ *
+ * Config is read on every call, so runtime config() changes apply.
+ */
+final readonly class SystemOneManager
+{
+    public function __construct(
+        private Repository $config,
+        private Factory $http,
+    ) {}
+
+    /** The client for a named connection, or the default one. */
+    public function connection(?string $name = null): DecisionClient
+    {
+        $name ??= $this->defaultConnection();
+        $connection = $this->config->get("system-one.connections.{$name}");
+
+        if (! is_array($connection)) {
+            throw new InvalidArgumentException("System One connection '{$name}' is not configured in config/system-one.php.");
+        }
+
+        $url = $connection['url'] ?? null;
+        $apiKey = $connection['api_key'] ?? null;
+        $timeout = $connection['timeout'] ?? 30.0;
+
+        if (! is_string($url) || $url === '') {
+            throw new InvalidArgumentException("System One connection '{$name}' needs a 'url'.");
+        }
+
+        if ($apiKey !== null && ! is_string($apiKey)) {
+            throw new InvalidArgumentException("System One connection '{$name}' has an 'api_key' that is not a string.");
+        }
+
+        if ((! is_int($timeout) && ! is_float($timeout)) || $timeout <= 0) {
+            throw new InvalidArgumentException("System One connection '{$name}' has a 'timeout' that is not a number of seconds.");
+        }
+
+        return new DecisionClient(
+            new HttpTransport($this->http, $url, $apiKey, (float) $timeout),
+            new SystemOneCodec,
+        );
+    }
+
+    /** Sends the decision to the default connection. */
+    public function decide(Decision $decision): Result
+    {
+        return $this->connection()->decide($decision);
+    }
+
+    private function defaultConnection(): string
+    {
+        $name = $this->config->get('system-one.default');
+
+        if (! is_string($name)) {
+            throw new InvalidArgumentException('config/system-one.php has no default connection name.');
+        }
+
+        return $name;
+    }
+}

@@ -38,6 +38,9 @@
     },
     "extra": {
         "laravel": {
+            "aliases": {
+                "SystemOne": "EarthlingOllie\\SystemOneClassification\\Laravel\\Facades\\SystemOne"
+            },
             "providers": [
                 "EarthlingOllie\\SystemOneClassification\\Laravel\\SystemOneServiceProvider"
             ]
