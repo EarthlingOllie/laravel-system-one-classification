@@ -20,7 +20,10 @@ const PACKAGE = 'EarthlingOllie\\SystemOneClassification';
 
 /*
  * Core namespaces whose classes must be `final readonly`. Interfaces and enums are
- * allowed; traits and any other kind of class are not.
+ * allowed; traits and any other kind of class are not. Transport is included, as issue
+ * #1 asks: a FakeTransport there holds scripted answers immutably, and anything that
+ * records the decisions sent belongs to the testing fake under src/Laravel, which PLAN.md
+ * names as the only stateful part besides Laravel singletons.
  */
 const READONLY_CORE = [
     PACKAGE.'\\Domain',

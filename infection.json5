@@ -4,7 +4,7 @@
         "directories": ["src"]
     },
     // Infection no longer has a Pest adapter, so its PHPUnit adapter drives Pest through
-    // tools/pest-for-infection (see that file for what it bridges). The default suites
+    // tools/pest-for-infection.php (see that file for what it bridges). The default suites
     // from phpunit.xml.dist are used, so Integration (live Laya server) never runs here.
     "testFramework": "phpunit",
     "phpUnit": {
