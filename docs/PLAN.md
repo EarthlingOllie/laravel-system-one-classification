@@ -510,3 +510,12 @@ New questions get added here as they come up.
    `abstained` from `abstention === 'abstained'` (falling back to
    `low_confidence` when `abstention` is missing), and decide whether
    `unevaluated` needs its own representation or reads as "not abstained".
+
+   **Settled in #7.** Every answer (the `Answer` interface) has `abstained`,
+   `abstention` and `abstentionThreshold`. `abstained` is true only for
+   `Result\Abstention::Abstained`. `abstention` is that enum: `Passed`,
+   `Abstained`, `Unevaluated` (gate ran, no usable confidence) or
+   `NotRequested` (no `min_confidence`, so no gate ran). `abstention` decides,
+   and `low_confidence: true` without it reads as `Abstained`. The codec reads
+   all three fields in one helper (`decodeAbstention`), which each new answer
+   type's decoder spreads into its constructor.
