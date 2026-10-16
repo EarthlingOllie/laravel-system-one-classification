@@ -1,6 +1,7 @@
+import re
 import unittest
 
-from _support import compose_config
+from _support import DOCKER, ROOT, compose_config
 
 
 def seconds(value):
@@ -72,8 +73,29 @@ class ComposeTest(unittest.TestCase):
     def test_the_healthcheck_runs_the_python_probe_with_a_long_start_period(self):
         hc = self.laya["healthcheck"]
         self.assertIn("/opt/laya/healthcheck.py", " ".join(hc["test"]))
-        # First start downloads ~1.6 GB of weights before the checkpoint can load.
+        # First start downloads ~0.85 GB of weights before the checkpoint can load.
         self.assertGreaterEqual(seconds(hc["start_period"]), 600)
+
+    def test_the_start_period_outlasts_every_wait_timeout(self):
+        # `up --wait` gives up as soon as the container turns unhealthy, which can only happen
+        # after start_period. A shorter start_period silently caps LAYA_WAIT_TIMEOUT.
+        start_period = seconds(self.laya["healthcheck"]["start_period"])
+        up = (ROOT / "bin" / "laya-up").read_text()
+        default_wait = int(re.search(r"LAYA_WAIT_TIMEOUT:-(\d+)", up).group(1))
+        ci = (ROOT / ".github" / "workflows" / "integration.yml").read_text()
+        ci_wait = int(re.search(r'LAYA_WAIT_TIMEOUT: "(\d+)"', ci).group(1))
+        self.assertGreaterEqual(start_period, default_wait)
+        self.assertGreaterEqual(start_period, ci_wait)
+
+    def test_compose_and_the_image_declare_the_same_healthcheck(self):
+        dockerfile = (DOCKER / "laya" / "Dockerfile").read_text()
+        line = re.search(r"(?m)^HEALTHCHECK (.*)$", dockerfile).group(1)
+        hc = self.laya["healthcheck"]
+        for flag, key in (("interval", "interval"), ("timeout", "timeout"),
+                          ("start-period", "start_period")):
+            value = re.search(r"--%s=(\S+)" % flag, line).group(1)
+            self.assertEqual(seconds(value), seconds(hc[key]), flag)
+        self.assertEqual(int(re.search(r"--retries=(\d+)", line).group(1)), hc["retries"])
 
     def test_the_image_is_built_from_our_dockerfile(self):
         self.assertTrue(self.laya["build"]["context"].endswith("/docker/laya"))

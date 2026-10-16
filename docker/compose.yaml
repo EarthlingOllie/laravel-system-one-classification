@@ -19,7 +19,7 @@ services:
       HF_HOME: /home/laya/.cache/huggingface
       # Pin each checkpoint to the commit laya 0.4.8 reviewed (laya.revisions.PINNED_REVISIONS).
       LAYA_REVISION: ${LAYA_REVISION:-reviewed}
-      # Checkpoints built at start. english is ~1.6 GB on disk and ~2 GB resident; add
+      # Checkpoints built at start. english is ~0.85 GB on disk and ~2 GB resident; add
       # multilingual (LAYA_MODELS=english,multilingual) for non-English text.
       LAYA_MODELS: ${LAYA_MODELS:-english}
       LAYA_PRELOAD: ${LAYA_PRELOAD:-1}
@@ -46,8 +46,10 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
-      # The first start downloads the weights before anything can load.
-      start_period: 20m
+      # The first start downloads the weights before anything can load. Keep this at least as
+      # long as LAYA_WAIT_TIMEOUT: `up --wait` gives up as soon as the container turns
+      # unhealthy, which cannot happen before start_period ends. A success ends it early.
+      start_period: 60m
     restart: unless-stopped
 
 volumes:

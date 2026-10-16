@@ -25,7 +25,7 @@ class ComposerScriptsTest(unittest.TestCase):
     def test_laya_scripts_delegate_to_bin_without_composers_timeout(self):
         for name, script in (("laya:up", "bin/laya-up"), ("laya:down", "bin/laya-down")):
             entries = self.composer["scripts"][name]
-            # The first start downloads ~1.6 GB; Composer would kill it at its 300 s default.
+            # The first start downloads ~0.85 GB; Composer would kill it at its 300 s default.
             self.assertEqual(entries[0], "Composer\\Config::disableProcessTimeout")
             self.assertEqual(entries[1], script)
             mode = (ROOT / script).stat().st_mode

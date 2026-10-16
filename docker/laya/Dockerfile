@@ -40,7 +40,8 @@ ENV HF_HOME=/home/laya/.cache/huggingface \
 EXPOSE 8000
 
 # Healthy only once the checkpoints in LAYA_MODELS are resident (see healthcheck.py). The first
-# start downloads the weights (~1.6 GB for english), hence the long start period.
-HEALTHCHECK --interval=10s --timeout=5s --start-period=20m --retries=3 CMD python /opt/laya/healthcheck.py
+# start downloads the weights (~0.85 GB for english), hence the long start period; a
+# successful probe ends it early.
+HEALTHCHECK --interval=10s --timeout=5s --start-period=60m --retries=3 CMD python /opt/laya/healthcheck.py
 
 CMD ["laya-serve"]
