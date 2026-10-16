@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace EarthlingOllie\SystemOneClassification\Laravel;
 
 use EarthlingOllie\SystemOneClassification\Laravel\Commands\HealthCommand;
+use EarthlingOllie\SystemOneClassification\Laravel\Commands\InstallCommand;
 use Illuminate\Support\ServiceProvider;
 
 use function dirname;
@@ -29,6 +30,7 @@ final class SystemOneServiceProvider extends ServiceProvider
 
         $this->commands([
             HealthCommand::class,
+            InstallCommand::class,
         ]);
     }
 
