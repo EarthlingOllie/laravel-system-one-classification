@@ -42,6 +42,38 @@ it('encodes the context as the state and every question under its key', function
     ]);
 });
 
+it('sends each request control under its protocol field, between the state and the questions', function (): void {
+    $decision = churnDecision()
+        ->withHeadMaxLength(32)
+        ->withMaxLength(256)
+        ->withLanguageHint('en_GB')
+        ->withLanguage('en')
+        ->withMinConfidence(0.75);
+
+    $body = (new SystemOneCodec)->encode($decision);
+
+    expect($body)->toBe([
+        'state' => 'We will cancel.',
+        'min_confidence' => 0.75,
+        'lang' => 'en',
+        'lang_guess' => 'en_GB',
+        'max_len' => 256,
+        'head_max_len' => 32,
+        'questions' => ['churn' => ['type' => 'noul', 'instructions' => 'Does the customer threaten to cancel?']],
+    ]);
+});
+
+it('sends only the request controls that were set', function (): void {
+    $body = (new SystemOneCodec)->encode(churnDecision()->withMaxLength(64));
+
+    expect(array_keys($body))->toBe(['state', 'max_len', 'questions'])
+        ->and($body['max_len'] ?? null)->toBe(64);
+});
+
+it('sends a minimum confidence of zero rather than dropping it', function (): void {
+    expect((new SystemOneCodec)->encode(churnDecision()->withMinConfidence(0.0)))->toHaveKey('min_confidence', 0.0);
+});
+
 it('refuses to encode a decision that asks nothing', function (): void {
     (new SystemOneCodec)->encode(Decision::about(Context::text('We will cancel.')));
 })->throws(InvalidDecision::class, 'The decision asks no questions; add one with ask().');

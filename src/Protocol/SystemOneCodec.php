@@ -17,6 +17,7 @@ use EarthlingOllie\SystemOneClassification\Result\Answer\YesNoAnswer;
 use EarthlingOllie\SystemOneClassification\Result\Result;
 use EarthlingOllie\SystemOneClassification\Transport\Response;
 
+use function array_filter;
 use function array_is_list;
 use function is_array;
 use function is_float;
@@ -36,7 +37,7 @@ final readonly class SystemOneCodec
     public const string PATH = '/v1/systemone';
 
     /**
-     * @return array{state: string, questions: array<string, array<string, mixed>>}
+     * @return array<string, mixed> `state`, the request controls that are set, then `questions`
      *
      * @throws InvalidDecision
      */
@@ -52,7 +53,23 @@ final readonly class SystemOneCodec
             throw InvalidDecision::noQuestions();
         }
 
-        return ['state' => $decision->context->text, 'questions' => $questions];
+        return ['state' => $decision->context->text, ...self::controls($decision), 'questions' => $questions];
+    }
+
+    /**
+     * The request controls the decision sets; one left null is not sent, so the server's default applies.
+     *
+     * @return array<string, float|int|string>
+     */
+    private static function controls(Decision $decision): array
+    {
+        return array_filter([
+            'min_confidence' => $decision->minConfidence,
+            'lang' => $decision->language,
+            'lang_guess' => $decision->languageHint,
+            'max_len' => $decision->maxLength,
+            'head_max_len' => $decision->headMaxLength,
+        ], static fn (float|int|string|null $control): bool => $control !== null);
     }
 
     /**

@@ -49,4 +49,19 @@ final class InvalidDecision extends InvalidArgumentException implements SystemOn
     {
         return new self('The wire format has no question type for '.get_debug_type($question).'.');
     }
+
+    public static function minConfidenceOutOfRange(float $minConfidence): self
+    {
+        return new self("The minimum confidence must be between 0 and 1, got {$minConfidence}.");
+    }
+
+    public static function emptyLanguage(string $name): self
+    {
+        return new self("{$name} must not be empty.");
+    }
+
+    public static function nonPositiveLength(string $name, int $tokens): self
+    {
+        return new self("{$name} must be a positive number of tokens, got {$tokens}.");
+    }
 }
