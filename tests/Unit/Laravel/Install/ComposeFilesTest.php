@@ -66,19 +66,23 @@ it('does not treat a sibling directory with the same prefix as inside the app', 
         ->toBe(packageDir().'/docker/laya');
 });
 
-it('refuses a package compose file whose build context it cannot find', function (): void {
+it('refuses a package compose file it cannot rewrite', function (string $compose, string $reason): void {
     $dir = sys_get_temp_dir().'/system-one-compose-'.bin2hex(random_bytes(4));
     mkdir($dir.'/docker', recursive: true);
-    file_put_contents($dir.'/docker/compose.yaml', "services:\n  laya:\n    build: .\n");
+    file_put_contents($dir.'/docker/compose.yaml', $compose);
 
     try {
-        (new ComposeFiles($dir))->standalone('/app');
+        expect(fn () => (new ComposeFiles($dir))->standalone('/app'))
+            ->toThrow(InvalidConfiguration::class, "{$dir}/docker/compose.yaml {$reason}.");
     } finally {
         unlink($dir.'/docker/compose.yaml');
         rmdir($dir.'/docker');
         rmdir($dir);
     }
-})->throws(InvalidConfiguration::class, "has no 'context: ./laya' line to point at the installed package");
+})->with([
+    'no build context' => ["# x\nname: s\nservices:\n  laya:\n    build: .\n", "has no 'context: ./laya' line to point at the installed package"],
+    'no name line' => ["# x\nservices:\n  laya:\n    build:\n      context: ./laya\n", "has no single top-level 'name:' line ending its header"],
+]);
 
 it('refuses a package compose file without a laya service', function (): void {
     $dir = sys_get_temp_dir().'/system-one-compose-'.bin2hex(random_bytes(4));
@@ -129,7 +133,7 @@ it('follows the file\'s indentation and adds a volumes section when there is non
 
     expect($updated)->toStartWith("# A Sail file trimmed by hand: two-space indentation and no volumes section.\nservices:\n  laya:\n")
         ->and($updated)->toContain("services:\n  laya:\n    image: ")
-        ->and($updated)->toEndWith("\nvolumes:\n  sail-laya:\n    driver: local\n")
+        ->and($updated)->toEndWith("    driver: bridge\nvolumes:\n  sail-laya:\n    driver: local\n")
         ->and(parsedYaml($updated)['services']['laya']['networks'])->toBe(['sail']);
 });
 
@@ -140,6 +144,15 @@ it('appends a volumes section to a file without a final newline', function (): v
     expect($updated)->toEndWith("        image: x\nvolumes:\n    sail-laya:\n        driver: local\n")
         ->and(parsedYaml($updated)['services'])->toHaveKeys(['laya', 'app'])
         ->and(parsedYaml($updated)['services']['laya'])->not->toHaveKey('networks');
+});
+
+it('joins the sail network only when the file defines one', function (): void {
+    $compose = "services:\n    app:\n        image: x\nnetworks:\n    other:\n        driver: bridge\n";
+
+    $updated = (new ComposeFiles(packageDir()))->addToSail($compose, '/app');
+    assert($updated !== null);
+
+    expect(parsedYaml($updated)['services']['laya'])->not->toHaveKey('networks');
 });
 
 it('changes nothing when the laya service and its volume are already there', function (): void {
@@ -162,7 +175,7 @@ it('refuses a file it cannot safely edit', function (string $compose, string $re
     expect(fn () => (new ComposeFiles(packageDir()))->addToSail($compose, '/app'))
         ->toThrow(InvalidConfiguration::class, $reason);
 })->with([
-    'not YAML' => ["services: [\n", 'is not valid YAML'],
+    'not YAML' => ["services: [\n", 'The Sail Compose file is not valid YAML: Malformed inline YAML string at line 2..'],
     'not a mapping' => ['- a', 'has no services section'],
     'a scalar' => ['hello', 'has no services section'],
     'services a list' => ["services:\n- app\n", 'has no services section'],

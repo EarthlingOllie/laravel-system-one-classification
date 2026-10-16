@@ -19,7 +19,6 @@ use EarthlingOllie\SystemOneClassification\Result\Result;
 use Illuminate\Console\Command;
 
 use function array_map;
-use function array_values;
 use function file_get_contents;
 use function is_file;
 use function is_readable;
@@ -63,7 +62,7 @@ final class TryCommand extends Command
     public function handle(SystemOneManager $manager): int
     {
         // A bare `--yes-no` arrives as null: refused below like any blank question.
-        $instructions = array_values(array_map(static fn (?string $value): string => $value ?? '', $this->option('yes-no')));
+        $instructions = array_map(static fn (?string $value): string => $value ?? '', $this->option('yes-no'));
         $option = $this->option('connection');
 
         if ($instructions === []) {

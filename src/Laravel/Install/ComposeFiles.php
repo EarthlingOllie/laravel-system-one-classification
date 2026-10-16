@@ -9,6 +9,7 @@ use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
 
 use function array_is_list;
+use function data_get;
 use function array_map;
 use function array_slice;
 use function array_splice;
@@ -17,7 +18,6 @@ use function file_get_contents;
 use function implode;
 use function is_array;
 use function preg_match;
-use function preg_replace;
 use function rtrim;
 use function str_repeat;
 use function str_replace;
@@ -40,6 +40,9 @@ final readonly class ComposeFiles
 
     private const string CONTEXT_LINE = 'context: ./laya';
 
+    /** Where the package compose file's header comment ends. */
+    private const string FIRST_KEY = "\nname: ";
+
     private const string HF_CACHE = '/home/laya/.cache/huggingface';
 
     public function __construct(private string $packageDir) {}
@@ -57,8 +60,12 @@ final readonly class ComposeFiles
             throw InvalidConfiguration::unusableCompose($this->composePath(), "has no '".self::CONTEXT_LINE."' line to point at the installed package");
         }
 
+        if (substr_count($source, self::FIRST_KEY) !== 1) {
+            throw InvalidConfiguration::unusableCompose($this->composePath(), "has no single top-level 'name:' line ending its header");
+        }
+
         // Drop the package's own header (it talks about `composer laya:up`, which only exists in the package repo).
-        $body = (string) preg_replace('/\A(?:#[^\n]*\n|\n)*/', '', $source);
+        $body = 'name: '.implode('', array_slice(explode(self::FIRST_KEY, $source), 1));
 
         return <<<'YAML'
             # Local Laya server for this app, written by `php artisan system-one:install`.
@@ -113,9 +120,11 @@ final readonly class ComposeFiles
     private function sailService(bool $sailNetwork, string $appBasePath): array
     {
         $parsed = $this->parse($this->packageCompose(), $this->composePath());
-        $service = is_array($parsed) && is_array($parsed['services'] ?? null) && is_array($parsed['services']['laya'] ?? null)
-            ? $parsed['services']['laya']
-            : throw InvalidConfiguration::unusableCompose($this->composePath(), 'has no laya service');
+        $service = data_get($parsed, 'services.laya');
+
+        if (! is_array($service)) {
+            throw InvalidConfiguration::unusableCompose($this->composePath(), 'has no laya service');
+        }
 
         $service['build'] = ['context' => $this->contextFor($appBasePath)];
         $service['volumes'] = [self::SAIL_VOLUME.':'.self::HF_CACHE];
@@ -153,7 +162,7 @@ final readonly class ComposeFiles
     private function block(array $entries, int $indent): string
     {
         $pad = str_repeat(' ', $indent);
-        $lines = explode("\n", rtrim(Yaml::dump($entries, 10, $indent), "\n"));
+        $lines = explode("\n", rtrim(Yaml::dump($entries, PHP_INT_MAX, $indent), "\n"));
 
         return implode("\n", array_map(fn (string $line): string => $pad.$line, $lines))."\n";
     }

@@ -94,6 +94,32 @@ it('prints the answers as JSON with --json', function (): void {
         ->assertExitCode(Command::SUCCESS);
 });
 
+it('rounds what it prints to 4 decimals and the JSON to 12, keeping slashes and accents as they are', function (): void {
+    fakeAnswers(['q1' => 0.1234567890123]);
+    $question = 'Résilier / quitter ?';
+
+    $this->artisan('system-one:try', ['text' => 'x', '--yes-no' => [$question]])
+        ->expectsOutput('q1 (yes/no): Résilier / quitter ?')
+        ->expectsOutput('  value: no (probability 0.1235, threshold 0.5)')
+        ->expectsOutput('  confidence: 0.8765')
+        ->expectsOutput('  distribution: yes 0.1235, no 0.8765')
+        ->assertExitCode(Command::SUCCESS);
+
+    $this->artisan('system-one:try', ['text' => 'x', '--yes-no' => [$question], '--json' => true])
+        // One write holds the whole document, and each expectation consumes the write it matches.
+        ->expectsOutputToContain(<<<'JSON'
+                        "instructions": "Résilier / quitter ?",
+                        "value": false,
+                        "probability": 0.1234567890123,
+                        "confidence": 0.876543210988,
+                        "distribution": {
+                            "yes": 0.1234567890123,
+                            "no": 0.876543210988
+                        }
+            JSON)
+        ->assertExitCode(Command::SUCCESS);
+});
+
 it('sends to the connection named by --connection', function (): void {
     config(['system-one.connections.staging' => ['url' => 'https://staging.test', 'api_key' => 'sk-1']]);
     fakeAnswers(['q1' => 0.1]);
@@ -152,6 +178,7 @@ it('exits with 2 for input it cannot use, before sending anything', function (ar
     'no question' => [['text' => 'x'], 'Ask at least one question, e.g. --yes-no="Does the customer threaten to cancel?"'],
     'text and --file' => [['text' => 'x', '--file' => '/tmp/x', '--yes-no' => ['Q?']], 'Give the text as an argument or with --file, not both.'],
     'missing file' => [['--file' => '/nonexistent/system-one.txt', '--yes-no' => ['Q?']], 'Cannot read --file /nonexistent/system-one.txt.'],
+    'a directory' => [['--file' => sys_get_temp_dir(), '--yes-no' => ['Q?']], 'Cannot read --file '.sys_get_temp_dir().'.'],
     'blank text' => [['text' => '   ', '--yes-no' => ['Q?']], 'The context text must not be empty.'],
     'blank question' => [['text' => 'x', '--yes-no' => ['']], "Question 'q1' needs instructions."],
     'bare --yes-no' => [['text' => 'x', '--yes-no' => [null]], "Question 'q1' needs instructions."],

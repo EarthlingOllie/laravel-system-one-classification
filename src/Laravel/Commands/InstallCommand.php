@@ -32,7 +32,7 @@ final class InstallCommand extends Command
     public const string STANDALONE_FILE = 'compose.system-one.yaml';
 
     /** The names `docker compose` (and so Sail) looks for, in its order of preference. */
-    public const array SAIL_FILES = ['docker-compose.yml', 'docker-compose.yaml', 'compose.yml', 'compose.yaml'];
+    public const array SAIL_FILES = ['compose.yaml', 'compose.yml', 'docker-compose.yaml', 'docker-compose.yml'];
 
     private const array MODES = ['standalone', 'sail'];
 
@@ -89,7 +89,6 @@ final class InstallCommand extends Command
         }
 
         $this->setUrl($app, $files, 'http://localhost:8000');
-        $this->newLine();
         $this->line('Start the server (the first start builds the image and downloads the checkpoint):');
         $this->line('  docker compose -f '.self::STANDALONE_FILE.' up -d --wait');
         $this->line('Then check it: php artisan system-one:health');
@@ -102,7 +101,7 @@ final class InstallCommand extends Command
         $name = $this->sailFile($files);
 
         if ($name === null) {
-            $this->error('No Sail Compose file (docker-compose.yml, docker-compose.yaml, compose.yml or compose.yaml) in the app. Run `php artisan sail:install` first.');
+            $this->error('No Sail Compose file (compose.yaml, compose.yml, docker-compose.yaml or docker-compose.yml) in the app. Run `php artisan sail:install` first.');
 
             return self::FAILURE;
         }
@@ -125,7 +124,6 @@ final class InstallCommand extends Command
         }
 
         $this->setUrl($app, $files, 'http://laya:8000');
-        $this->newLine();
         $this->line('Start it with the rest of the app (the first start builds the image and downloads the checkpoint):');
         $this->line('  ./vendor/bin/sail up -d');
         $this->line('Then check it: ./vendor/bin/sail artisan system-one:health');

@@ -49,7 +49,9 @@ it('installs standalone by default: config, Compose file and SYSTEM_ONE_URL', fu
         ->expectsOutputToContain('Published config/system-one.php')
         ->expectsOutputToContain('Wrote compose.system-one.yaml')
         ->expectsOutputToContain('Set SYSTEM_ONE_URL=http://localhost:8000 in .env')
-        ->expectsOutputToContain('docker compose -f compose.system-one.yaml up -d --wait')
+        ->expectsOutput('Start the server (the first start builds the image and downloads the checkpoint):')
+        ->expectsOutput('  docker compose -f compose.system-one.yaml up -d --wait')
+        ->expectsOutput('Then check it: php artisan system-one:health')
         ->assertExitCode(Command::SUCCESS);
 
     expect(appFile($this->appDir, 'config/system-one.php'))->toBe(file_get_contents(dirname(__DIR__, 3).'/config/system-one.php'))
@@ -84,6 +86,14 @@ it('changes nothing when standalone is installed twice, and keeps what was alrea
         ->and(appFile($this->appDir, '.env'))->toBe($env);
 });
 
+it('creates the config directory when the app has none', function (): void {
+    rmdir($this->appDir.'/config');
+
+    $this->artisan('system-one:install', ['--mode' => 'standalone'])->assertExitCode(Command::SUCCESS);
+
+    expect(file_exists($this->appDir.'/config/system-one.php'))->toBeTrue();
+});
+
 it('creates .env when the app has none', function (): void {
     unlink($this->appDir.'/.env');
 
@@ -99,7 +109,9 @@ it('adds a laya service to the Sail file when Sail is chosen', function (): void
         ->expectsChoice('Where should the local Laya server run?', 'sail', ['standalone', 'sail'])
         ->expectsOutputToContain('Added the laya service and the sail-laya volume to docker-compose.yml')
         ->expectsOutputToContain('Set SYSTEM_ONE_URL=http://laya:8000 in .env')
-        ->expectsOutputToContain('sail up -d')
+        ->expectsOutput('Start it with the rest of the app (the first start builds the image and downloads the checkpoint):')
+        ->expectsOutput('  ./vendor/bin/sail up -d')
+        ->expectsOutput('Then check it: ./vendor/bin/sail artisan system-one:health')
         ->assertExitCode(Command::SUCCESS);
 
     $compose = appYaml($this->appDir, 'docker-compose.yml');
@@ -138,7 +150,19 @@ it('finds the Sail file under the other names Compose accepts', function (string
         ->assertExitCode(Command::SUCCESS);
 
     expect(appYaml($this->appDir, $name)['services'])->toHaveKey('laya');
-})->with(['docker-compose.yaml', 'compose.yml', 'compose.yaml']);
+})->with(['compose.yaml', 'compose.yml', 'docker-compose.yaml']);
+
+it('edits the file docker compose itself would pick when there are several', function (): void {
+    useSailFixture($this->appDir, as: 'docker-compose.yml');
+    $other = useSailFixture($this->appDir, as: 'compose.yaml');
+
+    $this->artisan('system-one:install', ['--mode' => 'sail'])
+        ->expectsOutputToContain('to compose.yaml')
+        ->assertExitCode(Command::SUCCESS);
+
+    expect(appYaml($this->appDir, 'compose.yaml')['services'])->toHaveKey('laya')
+        ->and(appFile($this->appDir, 'docker-compose.yml'))->toBe($other);
+});
 
 it('keeps a SYSTEM_ONE_URL that is already set and says what Sail expects', function (): void {
     file_put_contents($this->appDir.'/.env', "SYSTEM_ONE_URL=http://localhost:8000\n");
@@ -153,7 +177,7 @@ it('keeps a SYSTEM_ONE_URL that is already set and says what Sail expects', func
 
 it('exits with 1 for Sail when the app has no Sail Compose file', function (): void {
     $this->artisan('system-one:install', ['--mode' => 'sail'])
-        ->expectsOutputToContain('No Sail Compose file (docker-compose.yml, docker-compose.yaml, compose.yml or compose.yaml) in the app. Run `php artisan sail:install` first.')
+        ->expectsOutputToContain('No Sail Compose file (compose.yaml, compose.yml, docker-compose.yaml or docker-compose.yml) in the app. Run `php artisan sail:install` first.')
         ->assertExitCode(Command::FAILURE);
 
     expect(appFile($this->appDir, '.env'))->toBe("APP_NAME=Demo\n");
