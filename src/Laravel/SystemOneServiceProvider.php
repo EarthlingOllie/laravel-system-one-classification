@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace EarthlingOllie\SystemOneClassification\Laravel;
 
+use EarthlingOllie\SystemOneClassification\Laravel\Commands\HealthCommand;
 use Illuminate\Support\ServiceProvider;
 
 use function dirname;
@@ -25,6 +26,10 @@ final class SystemOneServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->publishes([self::configFile() => $this->app->configPath('system-one.php')], 'system-one-config');
+
+        $this->commands([
+            HealthCommand::class,
+        ]);
     }
 
     private static function configFile(): string
