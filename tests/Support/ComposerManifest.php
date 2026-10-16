@@ -13,6 +13,7 @@ use function array_map;
 use function dirname;
 use function file_get_contents;
 use function is_array;
+use function is_string;
 use function is_subclass_of;
 use function json_decode;
 use function var_export;
@@ -64,7 +65,7 @@ final class ComposerManifest
         }
 
         return array_map(static function (mixed $provider): string {
-            if (! \is_string($provider) || ! is_subclass_of($provider, ServiceProvider::class)) {
+            if (! is_string($provider) || ! is_subclass_of($provider, ServiceProvider::class)) {
                 throw new UnexpectedValueException('Not a service provider: '.var_export($provider, true));
             }
 

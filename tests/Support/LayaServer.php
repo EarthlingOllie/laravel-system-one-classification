@@ -11,6 +11,7 @@ use function fclose;
 use function fsockopen;
 use function getenv;
 use function in_array;
+use function is_string;
 use function parse_url;
 use function restore_error_handler;
 use function set_error_handler;
