@@ -1,3 +1,4 @@
+# shellcheck shell=bash disable=SC2154  # $here is set by the sourcing script
 # Sourced by bin/laya-*: `laya_compose <args>` runs docker compose against docker/compose.yaml
 # (plus the CUDA override when LAYA_CUDA=1 and LAYA_COMPOSE_OVERRIDE when set). Expects $here to be the repository root.
 
