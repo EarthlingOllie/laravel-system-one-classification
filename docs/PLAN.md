@@ -337,6 +337,10 @@ How the typing works:
     whole-number or repeated key, no questions, an unknown question type, and
     later a broken profile limit), always raised before anything is sent.
   - `UnknownQuestion`: `Result::get()` was given a handle the decision didn't ask.
+    Handles match by value, case descriptions included (they are what the model
+    reads), so a choice handle rebuilt under another locale is refused; the
+    message names the fields that differ. #10's fake and #12's cache key follow
+    the same identity.
   - `InvalidProbability`: a probability or threshold outside [0, 1], or a no
     threshold above the yes threshold.
   - `InvalidConfiguration`: `config/system-one.php` doesn't describe a usable
