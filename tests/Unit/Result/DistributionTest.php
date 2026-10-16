@@ -34,13 +34,12 @@ it('keeps the order it was built in, whatever the probabilities', function (): v
         ['case' => Priority::Normal, 'probability' => 0.3],
     ]);
 
-    $iterated = [];
-    foreach ($distribution as $case => $probability) {
-        $iterated[] = [$case, $probability];
-    }
-
     expect($distribution->cases())->toBe([Priority::High, Priority::Low, Priority::Normal])
-        ->and($iterated)->toBe([[Priority::High, 0.1], [Priority::Low, 0.6], [Priority::Normal, 0.3]])
+        ->and($distribution->entries())->toBe([
+            ['case' => Priority::High, 'probability' => 0.1],
+            ['case' => Priority::Low, 'probability' => 0.6],
+            ['case' => Priority::Normal, 'probability' => 0.3],
+        ])
         ->and($distribution)->toHaveCount(3);
 });
 

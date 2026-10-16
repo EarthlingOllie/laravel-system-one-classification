@@ -34,7 +34,6 @@ use function is_int;
 use function is_string;
 use function json_decode;
 use function json_encode;
-use function strval;
 
 /**
  * Maps a Decision to the System One wire format (`POST /v1/systemone`, shared by laya-serve
@@ -241,14 +240,15 @@ final readonly class SystemOneCodec
             $entries[] = ['case' => $case, 'probability' => (float) $probability];
 
             if ($label === $choice) {
-                $chosen = ['case' => $case, 'probability' => (float) $probability];
+                $chosen = $case;
             }
         }
 
-        $extra = array_diff(array_map(strval(...), array_keys($probabilities)), $labels);
+        // array_diff() compares as strings, so int keys match their whole-number labels.
+        $extra = array_diff(array_keys($probabilities), $labels);
 
         if ($extra !== []) {
-            $quoted = implode(', ', array_map(static fn (string $label): string => "'{$label}'", $extra));
+            $quoted = implode(', ', array_map(static fn (int|string $label): string => "'{$label}'", $extra));
 
             throw MalformedResponse::because("The answer for '{$key}' has probabilities for labels that are not options of {$question->enum}: {$quoted}.", $body);
         }
@@ -263,11 +263,13 @@ final readonly class SystemOneCodec
             throw MalformedResponse::because("The answer for '{$key}' has no numeric 'confidence'.", $body);
         }
 
+        $distribution = new Distribution($entries);
+
         return new ChoiceAnswer(
-            $chosen['case'],
-            self::answerConfidence($key, $answer, $chosen['probability'], $body),
+            $chosen,
+            self::answerConfidence($key, $answer, $distribution->probabilityOf($chosen), $body),
             new Confidence((float) $confidence, $this->profile),
-            new Distribution($entries),
+            $distribution,
         );
     }
 

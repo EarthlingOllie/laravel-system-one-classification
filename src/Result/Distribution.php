@@ -8,8 +8,6 @@ use BackedEnum;
 use Countable;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidDistribution;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidProbability;
-use Generator;
-use IteratorAggregate;
 
 use function array_column;
 use function count;
@@ -19,14 +17,12 @@ use function in_array;
  * The probability the model gave each case of an enum, in a fixed order.
  *
  * The order is the one it was built in: the option order of the question (declaration order
- * for a choice). `foreach ($distribution as $case => $probability)` walks it. The server rounds
- * each probability, so they need not add up to exactly 1.
+ * for a choice), and entries() lists it. The server rounds each probability, so they need
+ * not add up to exactly 1.
  *
  * @template TCase of BackedEnum
- *
- * @implements IteratorAggregate<TCase, float>
  */
-final readonly class Distribution implements Countable, IteratorAggregate
+final readonly class Distribution implements Countable
 {
     /** @var class-string<TCase> */
     private string $enum;
@@ -84,13 +80,16 @@ final readonly class Distribution implements Countable, IteratorAggregate
     }
 
     /**
-     * @return Generator<TCase, float>
+     * Every case with its probability, in the distribution's order.
+     *
+     * (Not an IteratorAggregate: a generator keyed by the cases cannot be fully branch-covered
+     * under Xdebug, and an array cannot be keyed by enum cases.)
+     *
+     * @return list<array{case: TCase, probability: float}>
      */
-    public function getIterator(): Generator
+    public function entries(): array
     {
-        foreach ($this->entries as $entry) {
-            yield $entry['case'] => $entry['probability'];
-        }
+        return $this->entries;
     }
 
     public function count(): int

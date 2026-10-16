@@ -56,10 +56,7 @@ function choiceAnswerTypes(Result $result): void
     assertType('list<'.Department::class.'>', $result->get($department)->distribution->cases());
     assertType('non-empty-list<array{case: '.Department::class.', description: string|null}>', $department->options());
 
-    foreach ($result->get($department)->distribution as $case => $probability) {
-        assertType(Department::class, $case);
-        assertType('float', $probability);
-    }
+    assertType('list<array{case: '.Department::class.', probability: float}>', $result->get($department)->distribution->entries());
 
     // Int-backed enums are typed the same way.
     $priority = Question::choice('priority', Priority::class, 'How soon?');

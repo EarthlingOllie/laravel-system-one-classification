@@ -154,9 +154,16 @@ it('accepts integer numbers', function (): void {
 
     expect($answer->answerConfidence)->toBe(1.0)
         ->and($answer->confidence->value)->toBe(1.0)
-        ->and($answer->probabilityOf(Department::Billing))->toBe(1.0)
-        ->and($answer->probabilityOf(Department::Other))->toBe(0.0);
+        ->and($answer->distribution->entries())->toBe([
+            ['case' => Department::Billing, 'probability' => 1.0],
+            ['case' => Department::Technical, 'probability' => 0.0],
+            ['case' => Department::Other, 'probability' => 0.0],
+        ]);
 });
+
+it('accepts an answer_confidence at either bound of [0, 1]', function (int|float $bound): void {
+    expect(decodeChoice(departmentQuestion(), departmentAnswer(['answer_confidence' => $bound]))->answerConfidence)->toBe((float) $bound);
+})->with([0, 0.0, 1, 1.0]);
 
 it('raises MalformedResponse for a choice answer that does not match the protocol', function (array $overrides, string $message): void {
     try {
