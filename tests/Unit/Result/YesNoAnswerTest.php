@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use EarthlingOllie\SystemOneClassification\Exceptions\InvalidProbability;
 use EarthlingOllie\SystemOneClassification\Result\Answer\YesNoAnswer;
 use EarthlingOllie\SystemOneClassification\Result\Verdict;
 
@@ -50,10 +51,10 @@ it('accepts thresholds at the ends of [0, 1]', function (): void {
 
 it('rejects a no threshold above the yes threshold', function (): void {
     (new YesNoAnswer(0.5))->verdict(yes: 0.2, no: 0.8);
-})->throws(InvalidArgumentException::class, 'The no threshold (0.8) must not be above the yes threshold (0.2).');
+})->throws(InvalidProbability::class, 'The no threshold (0.8) must not be above the yes threshold (0.2).');
 
 it('rejects thresholds outside [0, 1]', function (callable $call, string $message): void {
-    expect(fn () => $call(new YesNoAnswer(0.5)))->toThrow(InvalidArgumentException::class, $message);
+    expect(fn () => $call(new YesNoAnswer(0.5)))->toThrow(InvalidProbability::class, $message);
 })->with([
     'yes above 1' => [fn (YesNoAnswer $a) => $a->verdict(yes: 1.01, no: 0.2), 'The yes threshold must be between 0 and 1, got 1.01.'],
     'no below 0' => [fn (YesNoAnswer $a) => $a->verdict(yes: 0.8, no: -0.01), 'The no threshold must be between 0 and 1, got -0.01.'],
@@ -63,7 +64,7 @@ it('rejects thresholds outside [0, 1]', function (callable $call, string $messag
 
 it('rejects a probability outside [0, 1]', function (float $probability): void {
     new YesNoAnswer($probability);
-})->with([-0.01, 1.01, NAN])->throws(InvalidArgumentException::class, 'A probability must be between 0 and 1');
+})->with([-0.01, 1.01, NAN])->throws(InvalidProbability::class, 'A probability must be between 0 and 1');
 
 it('has exactly the three verdicts', function (): void {
     expect(Verdict::cases())->toBe([Verdict::Yes, Verdict::No, Verdict::Unsure]);

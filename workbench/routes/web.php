@@ -6,6 +6,7 @@ use EarthlingOllie\SystemOneClassification\Domain\Context;
 use EarthlingOllie\SystemOneClassification\Domain\Decision;
 use EarthlingOllie\SystemOneClassification\Domain\Question;
 use EarthlingOllie\SystemOneClassification\Exceptions\HostUnavailable;
+use EarthlingOllie\SystemOneClassification\Exceptions\InvalidConfiguration;
 use EarthlingOllie\SystemOneClassification\Exceptions\SystemOneException;
 use EarthlingOllie\SystemOneClassification\Laravel\Facades\SystemOne;
 use EarthlingOllie\SystemOneClassification\Laravel\SystemOneServiceProvider;
@@ -43,7 +44,8 @@ Route::get('/', function (Application $app): string {
 /*
  * One yes/no question, end to end: SystemOne::decide() against the default connection
  * (SYSTEM_ONE_URL). ?text= replaces the default ticket. A package exception is rendered
- * as an error page: 503 for HostUnavailable, 502 for anything else.
+ * as an error page: 503 for HostUnavailable, 500 for InvalidConfiguration (the app's own
+ * config is wrong), 502 for anything else.
  *
  * Under `composer serve` the shell environment does not reach this app (Testbench turns
  * off putenv and the PHP built-in server fills neither $_ENV nor $_SERVER from it): to
@@ -68,7 +70,11 @@ Route::get('/decide', function (Request $request): Response {
             </dl>
             HTML;
     } catch (SystemOneException $exception) {
-        $status = $exception instanceof HostUnavailable ? 503 : 502;
+        $status = match (true) {
+            $exception instanceof HostUnavailable => 503,
+            $exception instanceof InvalidConfiguration => 500,
+            default => 502,
+        };
         $type = e(class_basename($exception));
         $message = e($exception->getMessage());
         $outcome = <<<HTML

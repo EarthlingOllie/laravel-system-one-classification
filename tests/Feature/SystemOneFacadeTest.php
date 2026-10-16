@@ -8,6 +8,7 @@ use EarthlingOllie\SystemOneClassification\Domain\Decision;
 use EarthlingOllie\SystemOneClassification\Domain\Question;
 use EarthlingOllie\SystemOneClassification\Domain\Question\YesNoQuestion;
 use EarthlingOllie\SystemOneClassification\Exceptions\HostUnavailable;
+use EarthlingOllie\SystemOneClassification\Exceptions\InvalidConfiguration;
 use EarthlingOllie\SystemOneClassification\Exceptions\MalformedResponse;
 use EarthlingOllie\SystemOneClassification\Laravel\Facades\SystemOne;
 use EarthlingOllie\SystemOneClassification\Laravel\SystemOneManager;
@@ -84,12 +85,12 @@ it('applies the connection timeout', function (): void {
 
 it('rejects an unknown connection name', function (): void {
     SystemOne::connection('nope');
-})->throws(InvalidArgumentException::class, "System One connection 'nope' is not configured in config/system-one.php.");
+})->throws(InvalidConfiguration::class, "System One connection 'nope' is not configured in config/system-one.php.");
 
 it('rejects a connection without a usable URL', function (array $connection, string $message): void {
     config(['system-one.connections.broken' => $connection]);
 
-    expect(fn () => SystemOne::connection('broken'))->toThrow(InvalidArgumentException::class, $message);
+    expect(fn () => SystemOne::connection('broken'))->toThrow(InvalidConfiguration::class, $message);
 })->with([
     'no url' => [['api_key' => 'k'], "System One connection 'broken' needs a 'url'."],
     'empty url' => [['url' => ''], "System One connection 'broken' needs a 'url'."],
@@ -102,13 +103,13 @@ it('rejects a connection that is not an array', function (): void {
     config(['system-one.connections.broken' => 'http://x']);
 
     SystemOne::connection('broken');
-})->throws(InvalidArgumentException::class, "System One connection 'broken' is not configured in config/system-one.php.");
+})->throws(InvalidConfiguration::class, "System One connection 'broken' is not configured in config/system-one.php.");
 
 it('rejects a default connection name that is not a string', function (): void {
     config(['system-one.default' => null]);
 
     SystemOne::connection();
-})->throws(InvalidArgumentException::class, 'config/system-one.php has no default connection name.');
+})->throws(InvalidConfiguration::class, 'config/system-one.php has no default connection name.');
 
 it('raises HostUnavailable when the server is down', function (): void {
     Http::fake(['*' => Http::failedConnection('Connection refused')]);

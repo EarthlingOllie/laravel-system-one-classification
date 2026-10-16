@@ -67,3 +67,12 @@ it('renders other package errors with a 502 status', function (): void {
         ->assertStatus(502)
         ->assertSee('data-error="MalformedResponse"', escape: false);
 });
+
+it('renders a configuration error with a 500 status', function (): void {
+    config(['system-one.default' => 'nope']);
+
+    $this->get('/decide')
+        ->assertStatus(500)
+        ->assertSee('data-error="InvalidConfiguration"', escape: false)
+        ->assertSee("System One connection 'nope' is not configured");
+});

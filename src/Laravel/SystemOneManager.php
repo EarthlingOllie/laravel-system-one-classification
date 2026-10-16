@@ -6,12 +6,12 @@ namespace EarthlingOllie\SystemOneClassification\Laravel;
 
 use EarthlingOllie\SystemOneClassification\Client\DecisionClient;
 use EarthlingOllie\SystemOneClassification\Domain\Decision;
+use EarthlingOllie\SystemOneClassification\Exceptions\InvalidConfiguration;
 use EarthlingOllie\SystemOneClassification\Protocol\SystemOneCodec;
 use EarthlingOllie\SystemOneClassification\Result\Result;
 use EarthlingOllie\SystemOneClassification\Transport\HttpTransport;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Http\Client\Factory;
-use InvalidArgumentException;
 
 use function is_array;
 use function is_float;
@@ -31,14 +31,18 @@ final readonly class SystemOneManager
         private Factory $http,
     ) {}
 
-    /** The client for a named connection, or the default one. */
+    /**
+     * The client for a named connection, or the default one.
+     *
+     * @throws InvalidConfiguration when the connection is missing or malformed
+     */
     public function connection(?string $name = null): DecisionClient
     {
         $name ??= $this->defaultConnection();
         $connection = $this->config->get("system-one.connections.{$name}");
 
         if (! is_array($connection)) {
-            throw new InvalidArgumentException("System One connection '{$name}' is not configured in config/system-one.php.");
+            throw InvalidConfiguration::unknownConnection($name);
         }
 
         $url = $connection['url'] ?? null;
@@ -46,15 +50,15 @@ final readonly class SystemOneManager
         $timeout = $connection['timeout'] ?? 30.0;
 
         if (! is_string($url) || $url === '') {
-            throw new InvalidArgumentException("System One connection '{$name}' needs a 'url'.");
+            throw InvalidConfiguration::missingUrl($name);
         }
 
         if ($apiKey !== null && ! is_string($apiKey)) {
-            throw new InvalidArgumentException("System One connection '{$name}' has an 'api_key' that is not a string.");
+            throw InvalidConfiguration::apiKeyNotString($name);
         }
 
         if ((! is_int($timeout) && ! is_float($timeout)) || $timeout <= 0) {
-            throw new InvalidArgumentException("System One connection '{$name}' has a 'timeout' that is not a number of seconds.");
+            throw InvalidConfiguration::invalidTimeout($name);
         }
 
         return new DecisionClient(
@@ -74,7 +78,7 @@ final readonly class SystemOneManager
         $name = $this->config->get('system-one.default');
 
         if (! is_string($name)) {
-            throw new InvalidArgumentException('config/system-one.php has no default connection name.');
+            throw InvalidConfiguration::noDefaultConnection();
         }
 
         return $name;

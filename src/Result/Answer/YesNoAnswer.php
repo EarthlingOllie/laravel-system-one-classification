@@ -4,20 +4,25 @@ declare(strict_types=1);
 
 namespace EarthlingOllie\SystemOneClassification\Result\Answer;
 
+use EarthlingOllie\SystemOneClassification\Exceptions\InvalidProbability;
 use EarthlingOllie\SystemOneClassification\Result\Verdict;
-use InvalidArgumentException;
 
 /** The answer to a yes/no question: the probability that the statement is true. */
 final readonly class YesNoAnswer implements Answer
 {
+    /** @throws InvalidProbability when the probability is outside [0, 1] */
     public function __construct(public float $probability)
     {
         if (! self::isUnitInterval($probability)) {
-            throw new InvalidArgumentException("A probability must be between 0 and 1, got {$probability}.");
+            throw InvalidProbability::outOfRange('A probability', $probability);
         }
     }
 
-    /** Whether the probability reaches the threshold. */
+    /**
+     * Whether the probability reaches the threshold.
+     *
+     * @throws InvalidProbability when the threshold is outside [0, 1]
+     */
     public function isYes(float $threshold = 0.5): bool
     {
         self::checkThreshold('The threshold', $threshold);
@@ -28,6 +33,8 @@ final readonly class YesNoAnswer implements Answer
     /**
      * Yes at or above `yes`, No at or below `no`, Unsure in between. When both thresholds are
      * equal, a probability that reaches them is Yes.
+     *
+     * @throws InvalidProbability when a threshold is outside [0, 1], or `no` is above `yes`
      */
     public function verdict(float $yes, float $no): Verdict
     {
@@ -35,7 +42,7 @@ final readonly class YesNoAnswer implements Answer
         self::checkThreshold('The no threshold', $no);
 
         if ($no > $yes) {
-            throw new InvalidArgumentException("The no threshold ({$no}) must not be above the yes threshold ({$yes}).");
+            throw InvalidProbability::thresholdsCrossed($yes, $no);
         }
 
         return match (true) {
@@ -48,7 +55,7 @@ final readonly class YesNoAnswer implements Answer
     private static function checkThreshold(string $name, float $threshold): void
     {
         if (! self::isUnitInterval($threshold)) {
-            throw new InvalidArgumentException("{$name} must be between 0 and 1, got {$threshold}.");
+            throw InvalidProbability::outOfRange($name, $threshold);
         }
     }
 
