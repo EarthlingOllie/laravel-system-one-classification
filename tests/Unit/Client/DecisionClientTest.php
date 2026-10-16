@@ -6,9 +6,11 @@ use EarthlingOllie\SystemOneClassification\Client\DecisionClient;
 use EarthlingOllie\SystemOneClassification\Domain\Context;
 use EarthlingOllie\SystemOneClassification\Domain\Decision;
 use EarthlingOllie\SystemOneClassification\Domain\Question;
+use EarthlingOllie\SystemOneClassification\Domain\Question\QuestionHandle;
 use EarthlingOllie\SystemOneClassification\Exceptions\HostUnavailable;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidDecision;
 use EarthlingOllie\SystemOneClassification\Protocol\SystemOneCodec;
+use EarthlingOllie\SystemOneClassification\Result\Answer\YesNoAnswer;
 use EarthlingOllie\SystemOneClassification\Transport\HttpTransport;
 use EarthlingOllie\SystemOneClassification\Transport\Response;
 use EarthlingOllie\SystemOneClassification\Transport\Transport;
@@ -52,3 +54,26 @@ it('sends nothing for a decision that asks no questions', function (): void {
         $http->assertNothingSent();
     }
 })->throws(InvalidDecision::class);
+
+it('sends nothing for a question type the wire format does not know', function (): void {
+    $http = new Factory;
+    $http->fake(['*' => Factory::response(['answers' => ['mystery' => ['type' => 'noul', 'noul' => 0.5]]])]);
+    $mystery = new class implements QuestionHandle
+    {
+        public string $key = 'mystery';
+
+        public string $instructions = 'What is it?';
+
+        public function answerType(): string
+        {
+            return YesNoAnswer::class;
+        }
+    };
+
+    try {
+        (new DecisionClient(new HttpTransport($http, 'http://laya.test'), new SystemOneCodec))
+            ->decide(Decision::about(Context::text('x'))->ask($mystery));
+    } finally {
+        $http->assertNothingSent();
+    }
+})->throws(InvalidDecision::class, 'The wire format has no question type for '.QuestionHandle::class.'@anonymous.');

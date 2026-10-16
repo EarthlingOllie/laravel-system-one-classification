@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace EarthlingOllie\SystemOneClassification\Protocol;
 
+use Closure;
 use EarthlingOllie\SystemOneClassification\Domain\Decision;
 use EarthlingOllie\SystemOneClassification\Domain\Question\QuestionHandle;
 use EarthlingOllie\SystemOneClassification\Domain\Question\YesNoQuestion;
@@ -28,7 +29,7 @@ use function json_encode;
  * Maps a Decision to the System One wire format (`POST /v1/systemone`, shared by laya-serve
  * and Jev) and a response back to a Result.
  *
- * Each question type has one encode and one decode arm below; new types add an arm to both.
+ * Each question type has one arm in wire(), which gives both its request and its decoder.
  */
 final readonly class SystemOneCodec
 {
@@ -44,7 +45,7 @@ final readonly class SystemOneCodec
         $questions = [];
 
         foreach ($decision->questions() as $question) {
-            $questions[$question->key] = $this->encodeQuestion($question);
+            $questions[$question->key] = self::wire($question)['request'];
         }
 
         if ($questions === []) {
@@ -58,6 +59,7 @@ final readonly class SystemOneCodec
      * @throws HostUnavailable on a 5xx
      * @throws RejectedByModel on a 4xx
      * @throws MalformedResponse when the status or body is not what the protocol defines
+     * @throws InvalidDecision for a decision encode() refuses, so never for one that was sent
      */
     public function decode(Decision $decision, Response $response): Result
     {
@@ -95,32 +97,30 @@ final readonly class SystemOneCodec
                 throw MalformedResponse::because("The answer for '{$question->key}' is not an object.", $response->body);
             }
 
-            $decoded[$question->key] = ['question' => $question, 'answer' => $this->decodeAnswer($question, $answer, $response->body)];
+            $decoded[$question->key] = ['question' => $question, 'answer' => self::wire($question)['decode']($answer, $response->body)];
         }
 
         return new Result($decoded);
     }
 
     /**
+     * The one dispatch on question type: what to send for a question and how to read its answer.
+     *
+     * encode() and decode() both go through here, so a type the codec knows has both halves and
+     * any other type is refused by encode(), before DecisionClient sends anything.
+     *
      * @param  QuestionHandle<Answer>  $question
-     * @return array<string, mixed>
+     * @return array{request: array<string, mixed>, decode: Closure(array<mixed>, string): Answer}
+     *
+     * @throws InvalidDecision
      */
-    private function encodeQuestion(QuestionHandle $question): array
+    private static function wire(QuestionHandle $question): array
     {
         return match (true) {
-            $question instanceof YesNoQuestion => ['type' => 'noul', 'instructions' => $question->instructions],
-            default => throw InvalidDecision::unsupportedQuestion($question),
-        };
-    }
-
-    /**
-     * @param  QuestionHandle<Answer>  $question
-     * @param  array<mixed>  $answer
-     */
-    private function decodeAnswer(QuestionHandle $question, array $answer, string $body): Answer
-    {
-        return match (true) {
-            $question instanceof YesNoQuestion => self::decodeYesNo($question->key, $answer, $body),
+            $question instanceof YesNoQuestion => [
+                'request' => ['type' => 'noul', 'instructions' => $question->instructions],
+                'decode' => static fn (array $answer, string $body): YesNoAnswer => self::decodeYesNo($question->key, $answer, $body),
+            ],
             default => throw InvalidDecision::unsupportedQuestion($question),
         };
     }
