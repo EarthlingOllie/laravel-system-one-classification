@@ -58,6 +58,7 @@ it('points the local connection at http://localhost:8000 when SYSTEM_ONE_URL is 
                 'url' => 'http://localhost:8000',
                 'api_key' => null,
                 'timeout' => 30,
+                'profile' => 'laya',
             ],
         ],
     ]);
@@ -71,7 +72,7 @@ it('takes the local base URL, key and timeout from the environment', function ()
     ]);
 
     expect($config['connections'])->toBe([
-        'local' => ['url' => 'http://laya:8000', 'api_key' => 'secret', 'timeout' => '5'],
+        'local' => ['url' => 'http://laya:8000', 'api_key' => 'secret', 'timeout' => '5', 'profile' => 'laya'],
     ]);
 });
 

@@ -324,8 +324,8 @@ How the typing works:
   or an enum without cases is an `InvalidDecision`.
 - **Choice answers** (#4): `ChoiceAnswer<TEnum>` has `value`, `answerConfidence` (the
   server's `answer_confidence`, or P(chosen) when it sends none, as Jev does),
-  `confidence` (a `Result\Confidence {value, profile}`; the codec's profile defaults to
-  `'laya'`), `distribution` (`Result\Distribution<TCase>`, every case once, in enum
+  `confidence` (a `Result\Confidence {value, profile}`, the profile coming from the
+  connection's `profile` config key), `distribution` (`Result\Distribution<TCase>`, every case once, in enum
   order, read with `entries()`/`cases()`/`probabilityOf()`), `probabilityOf()` and
   `isConfident()`. `Result\Probability::check()` is the one [0, 1] check (NAN refused).
   An unknown label, a missing or extra probability, or a non-numeric confidence is a
@@ -359,7 +359,10 @@ How the typing works:
   `SYSTEM_ONE_CONNECTION` (`local`); `local` takes `url` from `SYSTEM_ONE_URL`
   (`http://localhost:8000`), `api_key` from `SYSTEM_ONE_API_KEY` (empty means
   none) and `timeout` from `SYSTEM_ONE_TIMEOUT` (seconds; empty means 30).
-  `SystemOneManager` reads the config on every call, so runtime `config()`
+  Since #4 each connection has a `profile` (`'laya'` or `'jev'`; unset or empty
+  means `'laya'`, anything else is `InvalidConfiguration`), which the manager
+  passes to `SystemOneCodec` to tag the raw `confidence`. #6 swaps the string
+  for a `ModelProfile`, keeping the config key. `SystemOneManager` reads the config on every call, so runtime `config()`
   changes apply.
 - A singleton is bound in the container and exposed through a `SystemOne`
   facade.
