@@ -6,6 +6,8 @@ namespace EarthlingOllie\SystemOneClassification\Exceptions;
 
 use OutOfBoundsException;
 
+use function implode;
+
 /** Result::get() was given a question the decision did not ask. */
 final class UnknownQuestion extends OutOfBoundsException implements SystemOneException
 {

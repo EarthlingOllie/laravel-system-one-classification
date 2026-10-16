@@ -13,6 +13,11 @@ use Illuminate\Contracts\Config\Repository;
 use Illuminate\Http\Client\Factory;
 use InvalidArgumentException;
 
+use function is_array;
+use function is_float;
+use function is_int;
+use function is_string;
+
 /**
  * What the SystemOne facade resolves to: builds a DecisionClient per configured connection
  * (config/system-one.php) and sends decisions to the default one.

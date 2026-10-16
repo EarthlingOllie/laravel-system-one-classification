@@ -7,6 +7,16 @@ namespace EarthlingOllie\SystemOneClassification\Tests\Support;
 use Illuminate\Support\ServiceProvider;
 use UnexpectedValueException;
 
+use function array_filter;
+use function array_is_list;
+use function array_map;
+use function dirname;
+use function file_get_contents;
+use function is_array;
+use function is_subclass_of;
+use function json_decode;
+use function var_export;
+
 /**
  * The package's composer.json, decoded once per test run.
  */
@@ -54,7 +64,7 @@ final class ComposerManifest
         }
 
         return array_map(static function (mixed $provider): string {
-            if (! is_string($provider) || ! is_subclass_of($provider, ServiceProvider::class)) {
+            if (! \is_string($provider) || ! is_subclass_of($provider, ServiceProvider::class)) {
                 throw new UnexpectedValueException('Not a service provider: '.var_export($provider, true));
             }
 

@@ -7,6 +7,8 @@ namespace EarthlingOllie\SystemOneClassification\Domain\Question;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidDecision;
 use EarthlingOllie\SystemOneClassification\Result\Answer\YesNoAnswer;
 
+use function trim;
+
 /**
  * A yes/no statement check (Laya's `noul`): the model returns P(true).
  *

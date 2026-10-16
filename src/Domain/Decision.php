@@ -8,6 +8,9 @@ use EarthlingOllie\SystemOneClassification\Domain\Question\QuestionHandle;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidDecision;
 use EarthlingOllie\SystemOneClassification\Result\Answer\Answer;
 
+use function array_column;
+use function in_array;
+
 /**
  * An immutable request: questions about one context. Every builder returns a new instance.
  */

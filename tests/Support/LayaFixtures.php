@@ -7,6 +7,15 @@ namespace EarthlingOllie\SystemOneClassification\Tests\Support;
 use EarthlingOllie\SystemOneClassification\Transport\Response;
 use RuntimeException;
 
+use function array_key_exists;
+use function file_get_contents;
+use function is_array;
+use function is_file;
+use function is_int;
+use function is_string;
+use function json_decode;
+use function json_encode;
+
 /**
  * The recorded laya-serve fixtures the Contract suite reads (bin/laya-record-fixtures).
  *

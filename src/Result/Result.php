@@ -8,6 +8,8 @@ use EarthlingOllie\SystemOneClassification\Domain\Question\QuestionHandle;
 use EarthlingOllie\SystemOneClassification\Exceptions\UnknownQuestion;
 use EarthlingOllie\SystemOneClassification\Result\Answer\Answer;
 
+use function array_keys;
+
 /** The answers to one decision, read with the question handles that asked them. */
 final readonly class Result
 {

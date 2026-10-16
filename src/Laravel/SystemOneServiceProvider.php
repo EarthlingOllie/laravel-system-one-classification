@@ -6,6 +6,8 @@ namespace EarthlingOllie\SystemOneClassification\Laravel;
 
 use Illuminate\Support\ServiceProvider;
 
+use function dirname;
+
 /**
  * Laravel entry point for the package, auto-discovered through composer.json's
  * `extra.laravel.providers`: merges and publishes config/system-one.php and binds the

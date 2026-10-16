@@ -16,6 +16,14 @@ use EarthlingOllie\SystemOneClassification\Result\Answer\YesNoAnswer;
 use EarthlingOllie\SystemOneClassification\Result\Result;
 use EarthlingOllie\SystemOneClassification\Transport\Response;
 
+use function array_is_list;
+use function is_array;
+use function is_float;
+use function is_int;
+use function is_string;
+use function json_decode;
+use function json_encode;
+
 /**
  * Maps a Decision to the System One wire format (`POST /v1/systemone`, shared by laya-serve
  * and Jev) and a response back to a Result.

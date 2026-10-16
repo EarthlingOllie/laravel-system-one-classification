@@ -14,8 +14,6 @@ use EarthlingOllie\SystemOneClassification\Domain\Question\YesNoQuestion;
  */
 final readonly class Question
 {
-    private function __construct() {}
-
     public static function yesNo(string $key, string $instructions): YesNoQuestion
     {
         return new YesNoQuestion($key, $instructions);
