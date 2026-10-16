@@ -35,6 +35,21 @@ final class InvalidDecision extends InvalidArgumentException implements SystemOn
         return new self("Question '{$key}' needs instructions.");
     }
 
+    public static function notBackedEnum(string $key, string $class): self
+    {
+        return new self("Choice question '{$key}' needs a backed enum (enum X: string or enum X: int); {$class} is not a backed enum.");
+    }
+
+    public static function noOptions(string $key, string $enum): self
+    {
+        return new self("Choice question '{$key}' has no options: {$enum} has no cases.");
+    }
+
+    public static function blankDescription(string $key, string $label): self
+    {
+        return new self("Option '{$label}' of choice question '{$key}' has a description that is blank; describe it or leave the description out.");
+    }
+
     public static function duplicateKey(string $key): self
     {
         return new self("The decision already asks a question with the key '{$key}'.");
