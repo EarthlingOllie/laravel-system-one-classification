@@ -9,6 +9,7 @@ use EarthlingOllie\SystemOneClassification\Domain\Question;
 use EarthlingOllie\SystemOneClassification\Domain\Question\YesNoQuestion;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidDecision;
 use EarthlingOllie\SystemOneClassification\Exceptions\RejectedByModel;
+use EarthlingOllie\SystemOneClassification\Exceptions\UnknownQuestion;
 use EarthlingOllie\SystemOneClassification\Protocol\SystemOneCodec;
 use EarthlingOllie\SystemOneClassification\Result\Usage;
 use EarthlingOllie\SystemOneClassification\Transport\Response;
@@ -181,5 +182,5 @@ it('reads batch results with an equal handle built separately, as decide() resul
 
     expect($results[0]->get(Question::yesNo('churn', 'Does the customer threaten to cancel?'))->probability)->toBe(0.001)
         ->and(fn () => $results[0]->get(Question::yesNo('churn', 'Something else?')))
-        ->toThrow(EarthlingOllie\SystemOneClassification\Exceptions\UnknownQuestion::class);
+        ->toThrow(UnknownQuestion::class);
 });

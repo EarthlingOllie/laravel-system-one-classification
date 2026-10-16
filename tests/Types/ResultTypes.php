@@ -22,6 +22,7 @@ use EarthlingOllie\SystemOneClassification\Result\ResultSet;
 use EarthlingOllie\SystemOneClassification\Result\Usage;
 use EarthlingOllie\SystemOneClassification\Result\Verdict;
 
+use function count;
 use function PHPStan\Testing\assertType;
 
 function yesNoAnswerTypes(Result $result): void
