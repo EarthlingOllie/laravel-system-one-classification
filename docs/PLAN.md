@@ -349,6 +349,11 @@ bin/
   fetch-jev-openapi      # saves Jev's OpenAPI document to tests/Fixtures/jev/openapi.json
 ```
 
+- The image is always built locally (`pull_policy: build`, rebuilt from the
+  layer cache on each `laya:up`), and the build fails if the probe's copy of
+  laya's checkpoint names no longer matches the installed laya. The
+  healthcheck's 60 m start period must stay longer than `LAYA_WAIT_TIMEOUT`,
+  because `up --wait` gives up as soon as the container turns unhealthy.
 - Default: `LAYA_MODELS=english`, `LAYA_PRELOAD=1` and
   `LAYA_DEFAULT_MODEL=english`, which keeps RAM use down. The multilingual
   checkpoint is opt-in: `LAYA_MODELS=english,multilingual composer laya:up`.
