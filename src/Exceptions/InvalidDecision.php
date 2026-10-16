@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace EarthlingOllie\SystemOneClassification\Exceptions;
 
 use InvalidArgumentException;
+use JsonException;
 
 use function get_debug_type;
 
@@ -14,6 +15,31 @@ final class InvalidDecision extends InvalidArgumentException implements SystemOn
     public static function emptyText(): self
     {
         return new self('The context text must not be empty.');
+    }
+
+    public static function emptyFields(): self
+    {
+        return new self('The context fields must not be empty.');
+    }
+
+    public static function unnamedFields(): self
+    {
+        return new self('The context fields must be named: every top-level key must be a string that is not a whole number, so they are sent as a JSON object.');
+    }
+
+    public static function notPlainField(string $path, string $type): self
+    {
+        return new self("The context field '{$path}' holds a {$type}, which is not plain JSON data; pass arrays and scalars only.");
+    }
+
+    public static function nonFiniteField(string $path, float $value): self
+    {
+        return new self("The context field '{$path}' holds a float that is not finite ({$value}), which JSON cannot represent.");
+    }
+
+    public static function unserialisableFields(JsonException $reason): self
+    {
+        return new self('The context fields are not JSON-serialisable: '.$reason->getMessage().'.', previous: $reason);
     }
 
     public static function emptyKey(): self

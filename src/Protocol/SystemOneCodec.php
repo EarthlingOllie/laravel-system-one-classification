@@ -56,7 +56,7 @@ final readonly class SystemOneCodec
             throw InvalidDecision::noQuestions();
         }
 
-        return ['state' => $decision->context->text, ...self::controls($decision), 'questions' => $questions];
+        return ['state' => $decision->context->state, ...self::controls($decision), 'questions' => $questions];
     }
 
     /**

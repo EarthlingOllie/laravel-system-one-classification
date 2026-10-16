@@ -65,6 +65,16 @@ it('sends each request control under its protocol field, between the state and t
     ]);
 });
 
+it('sends structured fields as a JSON object state', function (): void {
+    $decision = Decision::about(Context::fields(['subject' => 'Charged twice', 'meta' => ['seats' => 3, 'tags' => []]]))
+        ->ask(Question::yesNo('churn', 'Does the customer threaten to cancel?'));
+
+    $body = (new SystemOneCodec)->encode($decision);
+
+    expect($body['state'])->toBe(['subject' => 'Charged twice', 'meta' => ['seats' => 3, 'tags' => []]])
+        ->and(json_encode($body['state'], JSON_THROW_ON_ERROR))->toBe('{"subject":"Charged twice","meta":{"seats":3,"tags":[]}}');
+});
+
 it('sends only the request controls that were set', function (): void {
     $body = (new SystemOneCodec)->encode(churnDecision()->withMaxLength(64));
 
