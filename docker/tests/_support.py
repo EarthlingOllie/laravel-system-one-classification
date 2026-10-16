@@ -2,10 +2,13 @@
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCKER = ROOT / "docker"
+# The tests load bin/ scripts as modules; keep their bytecode out of the repo.
+sys.dont_write_bytecode = True
 
 
 def clean_env(extra=None):

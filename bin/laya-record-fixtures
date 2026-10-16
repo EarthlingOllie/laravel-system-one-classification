@@ -23,25 +23,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "bin" / "lib"))
+from laya_payloads import CHURN, DEPARTMENT, TICKET, URGENCY  # noqa: E402
 WRONG_KEY = "not-the-server-key"
 # Response headers worth keeping. Date, Server-Timing and X-Inference-Time-Ms change every run.
 KEPT_HEADERS = ("content-type", "retry-after")
 
-TICKET = ("Hi, we were billed twice for March. Please refund the duplicate charge today "
-          "or we will cancel our plan.")
-DEPARTMENT = {
-    "type": "choice",
-    "instructions": "Which department should handle this?",
-    "criteria": {"billing": "invoices, payments, refunds",
-                 "technical": "bugs, outages, system errors",
-                 "other": "everything else"},
-}
-URGENCY = {
-    "type": "score",
-    "instructions": "How urgent is this?",
-    "criteria": ["can wait", "soon", "today", "blocking"],
-}
-CHURN = {"type": "noul", "instructions": "Does the customer threaten to cancel or leave?"}
 
 # (name, description, method, path, body, auth, expected status)
 SCENARIOS = [

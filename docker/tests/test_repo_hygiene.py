@@ -15,7 +15,8 @@ class RepoHygieneTest(unittest.TestCase):
         self.assertEqual([f for f in tracked if f.endswith(".pyc") or "__pycache__" in f], [])
 
     def test_bytecode_next_to_our_python_is_ignored(self):
-        for path in ("docker/tests/__pycache__/x.cpython-313.pyc", "bin/lib/__pycache__/x.cpython-313.pyc"):
+        for path in ("docker/tests/__pycache__/x.cpython-313.pyc", "bin/__pycache__/x.pyc",
+                     "bin/lib/__pycache__/x.cpython-313.pyc"):
             self.assertEqual(git("check-ignore", "-q", "--no-index", path).returncode, 0, path)
 
 

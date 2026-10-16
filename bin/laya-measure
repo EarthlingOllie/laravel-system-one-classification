@@ -17,22 +17,17 @@ import statistics
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 
-TEXT = ("Hi, we were billed twice for March. Please refund the duplicate charge today or we "
-        "will cancel our plan.")
-DEPARTMENT = {"type": "choice", "instructions": "Which department should handle this?",
-              "criteria": {"billing": "invoices, payments, refunds",
-                           "technical": "bugs, outages, system errors", "other": "everything else"}}
-URGENCY = {"type": "score", "instructions": "How urgent is this?",
-           "criteria": ["can wait", "soon", "today", "blocking"]}
-CHURN = {"type": "noul", "instructions": "Does the customer threaten to cancel or leave?"}
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "lib"))
+from laya_payloads import CHURN, DEPARTMENT, TICKET, URGENCY  # noqa: E402
 
 SCENARIOS = {
-    "noul_1q": ("/v1/systemone", {"state": TEXT, "questions": {"churn": CHURN}}),
-    "mixed_3q": ("/v1/systemone", {"state": TEXT, "questions": {
+    "noul_1q": ("/v1/systemone", {"state": TICKET, "questions": {"churn": CHURN}}),
+    "mixed_3q": ("/v1/systemone", {"state": TICKET, "questions": {
         "department": DEPARTMENT, "urgency": URGENCY, "churn": CHURN}}),
-    "batch_8_states_2q": ("/v1/systemone/batch", {"states": [TEXT] * 8, "questions": {
+    "batch_8_states_2q": ("/v1/systemone/batch", {"states": [TICKET] * 8, "questions": {
         "department": DEPARTMENT, "churn": CHURN}}),
 }
 
@@ -102,9 +97,17 @@ def main(argv=None):
     for name, (path, body) in SCENARIOS.items():
         if args.model:
             body = dict(body, model=args.model)
-        for _ in range(args.warmup):
-            post(url, path, body, key)
-        timings = [post(url, path, body, key) for _ in range(args.runs)]
+        try:
+            for _ in range(args.warmup):
+                post(url, path, body, key)
+            timings = [post(url, path, body, key) for _ in range(args.runs)]
+        except urllib.error.HTTPError as error:
+            print("%s: laya-serve answered HTTP %d: %s" % (name, error.code, error.read()[:200].decode(
+                "utf-8", "replace")), file=sys.stderr)
+            return 1
+        except urllib.error.URLError as error:
+            print("could not reach laya-serve at %s: %s" % (url, error.reason), file=sys.stderr)
+            return 2
         report["scenarios"][name] = {
             "runs": len(timings),
             "wall_ms": summary(t[0] for t in timings),

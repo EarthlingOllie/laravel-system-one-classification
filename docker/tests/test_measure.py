@@ -14,8 +14,9 @@ MEASURE = ROOT / "bin" / "laya-measure"
 
 
 class TimedLaya:
-    def __init__(self):
+    def __init__(self, status=200):
         self.bodies = []
+        self.status = status
         owner = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -23,7 +24,7 @@ class TimedLaya:
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 owner.bodies.append((self.path, self.headers.get("Authorization"), body))
                 payload = json.dumps({"answers": {}}).encode()
-                self.send_response(200)
+                self.send_response(owner.status)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("X-Inference-Time-Ms", "100.00")
                 self.end_headers()
@@ -84,6 +85,16 @@ class MeasureTest(unittest.TestCase):
         self.run_measure()
         self.assertEqual(len(self.laya.bodies), 3 * (1 + 3))
         self.assertEqual(sum(1 for p, _, _ in self.laya.bodies if p == "/v1/systemone/batch"), 4)
+
+    def test_a_failing_server_is_reported_without_a_traceback(self):
+        laya = TimedLaya(status=500)
+        self.addCleanup(laya.close)
+        result = subprocess.run([sys.executable, str(MEASURE), "--url", laya.url, "--runs", "1",
+                                 "--warmup", "0", "--no-docker"], capture_output=True, text=True,
+                                timeout=60, env=clean_env())
+        self.assertEqual(result.returncode, 1)
+        self.assertNotIn("Traceback", result.stderr)
+        self.assertIn("HTTP 500", result.stderr)
 
     def test_it_can_pin_a_model_and_send_the_key(self):
         self.run_measure("--model", "english", LAYA_API_KEY="k")
