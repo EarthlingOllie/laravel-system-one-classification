@@ -35,6 +35,15 @@ it('autoloads the package namespace from src/ with PSR-4', function (): void {
     ]);
 });
 
+it('rebuilds the Testbench package manifest so `testbench serve` auto-discovers the provider', function (): void {
+    $discover = '@php vendor/bin/testbench package:discover --ansi';
+
+    expect(composerManifest()['scripts'])
+        ->toHaveKey('post-autoload-dump')
+        ->and((array) composerManifest()['scripts']['post-autoload-dump'])->toContain($discover)
+        ->and((array) composerManifest()['scripts']['serve'])->toBe([$discover, '@php vendor/bin/testbench serve --ansi']);
+});
+
 it('exposes a composer script for every gate plus one that runs them all', function (): void {
     expect(composerManifest()['scripts'])->toHaveKeys([
         'test', 'test:integration', 'test:coverage', 'analyse', 'format', 'format:check', 'mutate', 'check',

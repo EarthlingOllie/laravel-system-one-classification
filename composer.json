@@ -55,6 +55,13 @@
         "format": "@php vendor/bin/pint",
         "format:check": "@php vendor/bin/pint --test",
         "mutate": "@php tools/mutate.php --threads=max --with-uncovered --show-mutations --no-progress",
+        "post-autoload-dump": [
+            "@php vendor/bin/testbench package:discover --ansi"
+        ],
+        "serve": [
+            "@php vendor/bin/testbench package:discover --ansi",
+            "@php vendor/bin/testbench serve --ansi"
+        ],
         "test": "@php vendor/bin/pest",
         "test:coverage": [
             "@putenv XDEBUG_MODE=coverage",
@@ -70,6 +77,7 @@
         "format": "Fix code style with Laravel Pint.",
         "format:check": "Check code style with Laravel Pint without changing files.",
         "mutate": "Infection mutation testing (MSI >= 90, covered MSI 100).",
+        "serve": "Serve the workbench app (testbench.yaml) with the package auto-discovered; set SERVER_PORT/SERVER_HOST to change the address.",
         "test": "Unit, Contract, Feature and Arch suites.",
         "test:coverage": "Tests with Xdebug path coverage; fails below 100% of lines or branches of src/.",
         "test:integration": "Integration suite against a running Laya server."

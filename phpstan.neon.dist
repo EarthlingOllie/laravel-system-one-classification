@@ -5,6 +5,7 @@ parameters:
         - tests/TestCase.php
         - tests/Types
         - tools
+        - workbench
     tmpDir: build/phpstan
 
     # Stricter than level max alone. phpstan-strict-rules and larastan are loaded by
