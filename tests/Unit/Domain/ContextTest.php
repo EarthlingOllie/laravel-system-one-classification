@@ -61,7 +61,30 @@ it('rejects fields nested deeper than JSON encoding allows', function (): void {
     }
 
     Context::fields(['deep' => $deep]);
-})->throws(InvalidDecision::class, 'The context fields are not JSON-serialisable: Maximum stack depth exceeded');
+})->throws(InvalidDecision::class, "The context fields are not JSON-serialisable: Maximum stack depth exceeded in the field 'deep', which nests arrays deeper than the 512 levels JSON allows.");
+
+it('accepts fields nested exactly as deep as JSON encoding allows, and refuses one level more', function (): void {
+    // The fields object is the first of JSON's 512 levels, so a field may nest 511 arrays.
+    $nest = function (int $levels, mixed $leaf): array {
+        for ($i = 0; $i < $levels; $i++) {
+            $leaf = ['n' => $leaf];
+        }
+
+        return $leaf;
+    };
+
+    expect(Context::fields(['deep' => $nest(511, 'leaf')])->state)->toBe(['deep' => $nest(511, 'leaf')])
+        // An empty array is a level too.
+        ->and(fn () => Context::fields(['deep' => $nest(511, [])]))
+        ->toThrow(InvalidDecision::class, "Maximum stack depth exceeded in the field 'deep', which nests arrays deeper than the 512 levels JSON allows.");
+});
+
+it('refuses a self-referencing array instead of recursing until PHP crashes', function (): void {
+    $loop = ['x' => 1];
+    $loop['self'] = &$loop;
+
+    Context::fields(['ok' => 'fine', 'loop' => $loop]);
+})->throws(InvalidDecision::class, "The context fields are not JSON-serialisable: Maximum stack depth exceeded in the field 'loop', which nests arrays deeper than the 512 levels JSON allows.");
 
 it('ends the JSON-failure message with a full stop and keeps the JSON error', function (): void {
     try {

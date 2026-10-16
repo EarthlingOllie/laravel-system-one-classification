@@ -42,6 +42,12 @@ final class InvalidDecision extends InvalidArgumentException implements SystemOn
         return new self('The context fields are not JSON-serialisable: '.$reason->getMessage().'.', previous: $reason);
     }
 
+    /** Worded like json_encode's own depth error, which a field this deep would otherwise raise. */
+    public static function tooDeepField(string $field, int $limit): self
+    {
+        return new self("The context fields are not JSON-serialisable: Maximum stack depth exceeded in the field '{$field}', which nests arrays deeper than the {$limit} levels JSON allows.");
+    }
+
     public static function emptyKey(): self
     {
         return new self('A question key must not be empty.');

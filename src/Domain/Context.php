@@ -25,6 +25,9 @@ use function trim;
  */
 final readonly class Context
 {
+    /** json_encode's default depth; the fields object itself is the first level. */
+    private const int MAX_DEPTH = 512;
+
     /**
      * @param  string|array<string, mixed>  $state  the text, or the fields as plain JSON data
      */
@@ -65,7 +68,7 @@ final readonly class Context
                 throw InvalidDecision::unnamedFields();
             }
 
-            $named[$name] = self::plainCopy($value, $name);
+            $named[$name] = self::plainCopy($value, $name, $name, 2);
         }
 
         try {
@@ -81,19 +84,28 @@ final readonly class Context
      * Checks the value is plain JSON data and returns a copy of it with no PHP references inside, so
      * a reference the caller still holds cannot change the context after it is built.
      *
+     * The walk stops where json_encode would, so a self-referencing array is refused instead of
+     * recursing until PHP crashes.
+     *
+     * @param  int  $depth  the JSON level the value sits at if it is an array
+     *
      * @throws InvalidDecision
      */
-    private static function plainCopy(mixed $value, string $path): mixed
+    private static function plainCopy(mixed $value, string $field, string $path, int $depth): mixed
     {
         if (is_float($value) && (is_nan($value) || is_infinite($value))) {
             throw InvalidDecision::nonFiniteField($path, $value);
         }
 
         if (is_array($value)) {
+            if ($depth > self::MAX_DEPTH) {
+                throw InvalidDecision::tooDeepField($field, self::MAX_DEPTH);
+            }
+
             $copy = [];
 
             foreach ($value as $key => $item) {
-                $copy[$key] = self::plainCopy($item, "{$path}.{$key}");
+                $copy[$key] = self::plainCopy($item, $field, "{$path}.{$key}", $depth + 1);
             }
 
             return $copy;
