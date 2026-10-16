@@ -92,7 +92,7 @@ function checkCoverage(array $argv): int
     return 0;
 }
 
-/** @var list<string> $arguments */
-$arguments = $_SERVER['argv'] ?? [];
+$argv = $_SERVER['argv'] ?? [];
+$arguments = is_array($argv) ? array_values(array_filter($argv, is_string(...))) : [];
 
 exit(checkCoverage($arguments));

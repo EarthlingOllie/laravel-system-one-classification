@@ -8,7 +8,7 @@
     // from phpunit.xml.dist are used, so Integration (live Laya server) never runs here.
     "testFramework": "phpunit",
     "phpUnit": {
-        "customPath": "tools/pest-for-infection"
+        "customPath": "tools/pest-for-infection.php"
     },
     "tmpDir": "build/infection/tmp",
     "logs": {
