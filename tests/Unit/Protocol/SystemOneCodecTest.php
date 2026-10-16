@@ -183,6 +183,8 @@ it('reads the abstention gate of an answer', function (array $gate, Abstention $
     'passed' => [['abstention' => 'passed', 'abstention_threshold' => 0.6], Abstention::Passed, false, 0.6],
     'unevaluated' => [['abstention' => 'unevaluated', 'abstention_threshold' => 0.6], Abstention::Unevaluated, false, 0.6],
     'integer threshold' => [['abstention' => 'passed', 'abstention_threshold' => 0], Abstention::Passed, false, 0.0],
+    'threshold of 1' => [['abstention' => 'abstained', 'abstention_threshold' => 1.0], Abstention::Abstained, true, 1.0],
+    'integer threshold of 1' => [['abstention' => 'abstained', 'abstention_threshold' => 1], Abstention::Abstained, true, 1.0],
     'low_confidence alone' => [['low_confidence' => true], Abstention::Abstained, true, null],
     'low_confidence with a threshold' => [['low_confidence' => true, 'abstention_threshold' => 0.8], Abstention::Abstained, true, 0.8],
     'low_confidence false' => [['low_confidence' => false], Abstention::NotRequested, false, null],

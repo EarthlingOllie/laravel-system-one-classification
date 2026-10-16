@@ -63,6 +63,16 @@ it('rejects fields nested deeper than JSON encoding allows', function (): void {
     Context::fields(['deep' => $deep]);
 })->throws(InvalidDecision::class, 'The context fields are not JSON-serialisable: Maximum stack depth exceeded');
 
+it('ends the JSON-failure message with a full stop and keeps the JSON error', function (): void {
+    try {
+        Context::fields(['body' => "caf\xE9"]);
+        $this->fail('Expected InvalidDecision.');
+    } catch (InvalidDecision $invalid) {
+        expect($invalid->getMessage())->toBe('The context fields are not JSON-serialisable: Malformed UTF-8 characters, possibly incorrectly encoded.')
+            ->and($invalid->getPrevious())->toBeInstanceOf(JsonException::class);
+    }
+});
+
 it('accepts text-free but non-empty fields such as numbers and booleans', function (): void {
     expect(Context::fields(['count' => 0, 'flag' => true])->state)->toBe(['count' => 0, 'flag' => true]);
 });

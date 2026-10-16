@@ -180,7 +180,7 @@ final readonly class SystemOneCodec
      * ones do) reads as abstained when it is true. With neither field, no gate ran.
      *
      * @param  array<mixed>  $answer
-     * @return array{abstention: Abstention, abstentionThreshold: ?float} the answer constructor's named arguments
+     * @return array{abstention: Abstention, abstentionThreshold: int|float|null} the answer constructor's named arguments
      */
     private static function decodeAbstention(string $key, array $answer, string $body): array
     {
@@ -208,7 +208,7 @@ final readonly class SystemOneCodec
             throw MalformedResponse::because("The answer for '{$key}' has an 'abstention_threshold' outside [0, 1]: {$threshold}.", $body);
         }
 
-        return ['abstention' => $abstention, 'abstentionThreshold' => $threshold === null ? null : (float) $threshold];
+        return ['abstention' => $abstention, 'abstentionThreshold' => $threshold];
     }
 
     /**
