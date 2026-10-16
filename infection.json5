@@ -3,9 +3,9 @@
     "source": {
         "directories": ["src"]
     },
-    // Infection dropped its Pest adapter, but Pest's CLI is PHPUnit-compatible, so the
-    // PHPUnit adapter drives vendor/bin/pest. The default suites from phpunit.xml.dist
-    // are used, so Integration (live Laya server) is never part of a mutation run.
+    // Infection no longer has a Pest adapter, so its PHPUnit adapter drives Pest through
+    // tools/pest-for-infection (see that file for what it bridges). The default suites
+    // from phpunit.xml.dist are used, so Integration (live Laya server) never runs here.
     "testFramework": "phpunit",
     "phpUnit": {
         "customPath": "tools/pest-for-infection"
@@ -13,8 +13,7 @@
     "tmpDir": "build/infection/tmp",
     "logs": {
         "text": "build/infection/infection.log",
-        "summary": "build/infection/summary.log",
-        "github": true
+        "summary": "build/infection/summary.log"
     },
     "mutators": {
         "@default": true

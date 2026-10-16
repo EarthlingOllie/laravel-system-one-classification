@@ -85,7 +85,9 @@ function checkCoverage(array $argv): int
         return 1;
     }
 
-    echo "OK: 100% of lines and branches are covered.\n";
+    echo $report->numberOfExecutableLines() === 0
+        ? "OK: src/ has no executable lines or branches yet.\n"
+        : "OK: 100% of lines and branches are covered.\n";
 
     return 0;
 }
