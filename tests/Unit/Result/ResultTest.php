@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 use EarthlingOllie\SystemOneClassification\Domain\Question;
 use EarthlingOllie\SystemOneClassification\Domain\Question\QuestionHandle;
-use EarthlingOllie\SystemOneClassification\Result\Answer\Answer;
 use EarthlingOllie\SystemOneClassification\Exceptions\UnknownQuestion;
+use EarthlingOllie\SystemOneClassification\Result\Answer\Answer;
 use EarthlingOllie\SystemOneClassification\Result\Answer\YesNoAnswer;
 use EarthlingOllie\SystemOneClassification\Result\Result;
 

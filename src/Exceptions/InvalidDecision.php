@@ -28,4 +28,9 @@ final class InvalidDecision extends InvalidArgumentException implements SystemOn
     {
         return new self('The decision asks no questions; add one with ask().');
     }
+
+    public static function unsupportedQuestion(object $question): self
+    {
+        return new self('The wire format has no question type for '.$question::class.'.');
+    }
 }
