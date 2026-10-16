@@ -65,8 +65,7 @@ final readonly class Context
                 throw InvalidDecision::unnamedFields();
             }
 
-            self::checkPlain($value, $name);
-            $named[$name] = $value;
+            $named[$name] = self::plainCopy($value, $name);
         }
 
         try {
@@ -78,23 +77,32 @@ final readonly class Context
         return new self($named);
     }
 
-    /** @throws InvalidDecision */
-    private static function checkPlain(mixed $value, string $path): void
+    /**
+     * Checks the value is plain JSON data and returns a copy of it with no PHP references inside, so
+     * a reference the caller still holds cannot change the context after it is built.
+     *
+     * @throws InvalidDecision
+     */
+    private static function plainCopy(mixed $value, string $path): mixed
     {
         if (is_float($value) && (is_nan($value) || is_infinite($value))) {
             throw InvalidDecision::nonFiniteField($path, $value);
         }
 
         if (is_array($value)) {
+            $copy = [];
+
             foreach ($value as $key => $item) {
-                self::checkPlain($item, "{$path}.{$key}");
+                $copy[$key] = self::plainCopy($item, "{$path}.{$key}");
             }
 
-            return;
+            return $copy;
         }
 
         if ($value !== null && ! is_scalar($value)) {
             throw InvalidDecision::notPlainField($path, get_debug_type($value));
         }
+
+        return $value;
     }
 }

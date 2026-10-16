@@ -82,3 +82,18 @@ it('cannot be changed after construction', function (): void {
 
     expect(fn () => $context->state = 'y')->toThrow(Error::class);
 });
+
+it('copies the fields, so a PHP reference into them cannot change the context afterwards', function (): void {
+    $inner = ['x' => 1, 'list' => ['a', ['b' => 'c']]];
+    $nested = &$inner['x'];
+    $deeper = &$inner['list'][1]['b'];
+    $fields = ['n' => $inner, 'top' => 't'];
+    $top = &$fields['top'];
+
+    $context = Context::fields($fields);
+    $nested = 999;
+    $deeper = 'changed';
+    $top = 'changed';
+
+    expect($context->state)->toBe(['n' => ['x' => 1, 'list' => ['a', ['b' => 'c']]], 'top' => 't']);
+});
