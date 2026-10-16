@@ -171,6 +171,23 @@ it('keeps an existing laya service as it is and only adds the missing volume', f
     expect($updated)->toBe("services:\n    laya:\n        image: mine\nvolumes:\n    sail-laya:\n        driver: local\n    other:\n        driver: local\n");
 });
 
+it('treats keys with no value as present instead of adding them a second time', function (string $compose, ?string $expected): void {
+    expect((new ComposeFiles(packageDir()))->addToSail($compose, '/app'))->toBe($expected);
+})->with([
+    'an empty volumes section' => [
+        "services:\n    laya:\n        image: mine\nvolumes:\n",
+        "services:\n    laya:\n        image: mine\nvolumes:\n    sail-laya:\n        driver: local\n",
+    ],
+    'a bare laya service' => [
+        "services:\n    laya:\nvolumes:\n    sail-laya:\n        driver: local\n",
+        null,
+    ],
+    'a bare sail-laya volume' => [
+        "services:\n    laya:\n        image: mine\nvolumes:\n    sail-laya:\n",
+        null,
+    ],
+]);
+
 it('refuses a file it cannot safely edit', function (string $compose, string $reason): void {
     expect(fn () => (new ComposeFiles(packageDir()))->addToSail($compose, '/app'))
         ->toThrow(InvalidConfiguration::class, $reason);

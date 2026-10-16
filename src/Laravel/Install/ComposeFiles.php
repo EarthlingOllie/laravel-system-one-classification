@@ -9,6 +9,7 @@ use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
 
 use function array_is_list;
+use function array_key_exists;
 use function array_map;
 use function array_slice;
 use function array_splice;
@@ -103,13 +104,14 @@ final readonly class ComposeFiles
 
         $updated = $compose;
 
-        if (! isset($services['laya'])) {
+        // array_key_exists, not isset: a bare `laya:` / `sail-laya:` / `volumes:` key parses as null but is still there.
+        if (! array_key_exists('laya', $services)) {
             $networks = $parsed['networks'] ?? null;
             $updated = $this->insertUnder($updated, $file, 'services', ['laya' => $this->sailService(is_array($networks) && isset($networks['sail']), $appBasePath)]);
         }
 
-        if (! isset($volumes[self::SAIL_VOLUME])) {
-            $updated = isset($parsed['volumes'])
+        if (! array_key_exists(self::SAIL_VOLUME, $volumes)) {
+            $updated = array_key_exists('volumes', $parsed)
                 ? $this->insertUnder($updated, $file, 'volumes', [self::SAIL_VOLUME => ['driver' => 'local']])
                 : rtrim($updated, "\n")."\nvolumes:\n".$this->block([self::SAIL_VOLUME => ['driver' => 'local']], self::indentOf($updated));
         }
