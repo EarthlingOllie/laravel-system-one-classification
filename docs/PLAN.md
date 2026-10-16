@@ -316,7 +316,20 @@ How the typing works:
 - **Enums drive the options.** `choice` and `score` take a `BackedEnum`
   class-string. Labels come from backing values, and descriptions come from a
   `#[Describe]` attribute on each case. A `score` enum must describe every case,
-  because Laya requires it.
+  because Laya requires it. As built in #4: `Question::choice()` returns
+  `Question\ChoiceQuestion<TEnum>`; an enum implementing `DescribesCases` is described
+  by `describe()` instead of the attribute, and a case with neither goes out as its bare
+  label (`null` criterion). Criteria always go out as a JSON object (the codec builds a
+  `stdClass`), so whole-number labels survive. A blank description, a non-backed class
+  or an enum without cases is an `InvalidDecision`.
+- **Choice answers** (#4): `ChoiceAnswer<TEnum>` has `value`, `answerConfidence` (the
+  server's `answer_confidence`, or P(chosen) when it sends none, as Jev does),
+  `confidence` (a `Result\Confidence {value, profile}`; the codec's profile defaults to
+  `'laya'`), `distribution` (`Result\Distribution<TCase>`, every case once, in enum
+  order, read with `entries()`/`cases()`/`probabilityOf()`), `probabilityOf()` and
+  `isConfident()`. `Result\Probability::check()` is the one [0, 1] check (NAN refused).
+  An unknown label, a missing or extra probability, or a non-numeric confidence is a
+  `MalformedResponse`.
 - **Typed errors.** Every exception the package throws implements the
   `Exceptions\SystemOneException` marker (enforced by the architecture tests,
   including a scan of every `throw` in `src/`).
