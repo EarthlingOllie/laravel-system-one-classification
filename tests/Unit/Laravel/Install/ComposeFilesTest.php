@@ -80,6 +80,20 @@ it('refuses a package compose file whose build context it cannot find', function
     }
 })->throws(InvalidConfiguration::class, "has no 'context: ./laya' line to point at the installed package");
 
+it('refuses a package compose file without a laya service', function (): void {
+    $dir = sys_get_temp_dir().'/system-one-compose-'.bin2hex(random_bytes(4));
+    mkdir($dir.'/docker', recursive: true);
+    file_put_contents($dir.'/docker/compose.yaml', "services:\n  other:\n    image: x\n");
+
+    try {
+        (new ComposeFiles($dir))->addToSail("services:\n    app:\n        image: x\n", '/app');
+    } finally {
+        unlink($dir.'/docker/compose.yaml');
+        rmdir($dir.'/docker');
+        rmdir($dir);
+    }
+})->throws(InvalidConfiguration::class, '/docker/compose.yaml has no laya service.');
+
 it('adds a laya service and its volume to a Sail file, leaving every existing line as it was', function (): void {
     $original = sailFixture('docker-compose.yml');
 
@@ -150,6 +164,8 @@ it('refuses a file it cannot safely edit', function (string $compose, string $re
 })->with([
     'not YAML' => ["services: [\n", 'is not valid YAML'],
     'not a mapping' => ['- a', 'has no services section'],
+    'a scalar' => ['hello', 'has no services section'],
+    'services a list' => ["services:\n- app\n", 'has no services section'],
     'no services' => ["volumes:\n    a: {}\n", 'has no services section'],
     'services not a map' => ["services: 3\n", 'has no services section'],
     'flow-style services' => ["services: {app: {image: x}}\n", "has no block-style 'services:' line to add to"],

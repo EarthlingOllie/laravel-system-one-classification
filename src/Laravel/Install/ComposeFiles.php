@@ -8,14 +8,16 @@ use EarthlingOllie\SystemOneClassification\Exceptions\InvalidConfiguration;
 use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
 
+use function array_is_list;
 use function array_map;
+use function array_slice;
+use function array_splice;
 use function explode;
 use function file_get_contents;
 use function implode;
 use function is_array;
 use function preg_match;
 use function preg_replace;
-use function preg_replace_callback;
 use function rtrim;
 use function str_repeat;
 use function str_replace;
@@ -81,7 +83,7 @@ final readonly class ComposeFiles
         $parsed = $this->parse($compose, $file);
         $services = is_array($parsed) ? ($parsed['services'] ?? null) : null;
 
-        if (! is_array($services)) {
+        if (! is_array($services) || ($services !== [] && array_is_list($services))) {
             throw InvalidConfiguration::unusableCompose($file, 'has no services section');
         }
 
@@ -134,21 +136,17 @@ final readonly class ComposeFiles
      */
     private function insertUnder(string $compose, string $file, string $section, array $entries): string
     {
-        $block = $this->block($entries, self::indentOf($compose));
-        $updated = preg_replace_callback(
-            '/^'.$section.':[ \t]*(?:#[^\n]*)?\n/m',
-            // The pattern has no groups, so the match array holds only the whole line.
-            fn (array $line): string => implode('', $line).$block,
-            $compose,
-            1,
-            $count,
-        );
+        $lines = explode("\n", $compose);
 
-        if ($count !== 1 || $updated === null) {
-            throw InvalidConfiguration::unusableCompose($file, "has no block-style '{$section}:' line to add to");
+        foreach ($lines as $i => $line) {
+            if (preg_match('/^'.$section.':[ \t]*(?:#.*)?$/', $line) === 1) {
+                array_splice($lines, $i + 1, 0, explode("\n", rtrim($this->block($entries, self::indentOf($compose)), "\n")));
+
+                return implode("\n", $lines);
+            }
         }
 
-        return $updated;
+        throw InvalidConfiguration::unusableCompose($file, "has no block-style '{$section}:' line to add to");
     }
 
     /** @param array<mixed> $entries */
@@ -160,10 +158,16 @@ final readonly class ComposeFiles
         return implode("\n", array_map(fn (string $line): string => $pad.$line, $lines))."\n";
     }
 
-    /** The indentation the file's first indented line uses; 4 (Sail's) when there is none. */
+    /**
+     * The indentation of the file's first indented line that is not a comment.
+     *
+     * Only called on a file with a block-style map of services, which always has one.
+     */
     private static function indentOf(string $compose): int
     {
-        return preg_match('/^( +)[^ #\n]/m', $compose, $match) === 1 ? strlen($match[1]) : 4;
+        preg_match_all('/^( +)[^ #\n]/m', $compose, $matches);
+
+        return strlen(implode('', array_slice($matches[1], 0, 1)));
     }
 
     /** The package's docker/laya directory as an app at $appBasePath should name it. */
