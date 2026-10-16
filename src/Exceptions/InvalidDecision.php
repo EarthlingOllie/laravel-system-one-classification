@@ -11,6 +11,11 @@ use function get_debug_type;
 /** A decision or question that cannot be sent, caught before anything goes over the wire. */
 final class InvalidDecision extends InvalidArgumentException implements SystemOneException
 {
+    public static function emptyText(): self
+    {
+        return new self('The context text must not be empty.');
+    }
+
     public static function emptyKey(): self
     {
         return new self('A question key must not be empty.');

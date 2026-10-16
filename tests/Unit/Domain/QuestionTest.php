@@ -40,3 +40,7 @@ it('rejects empty instructions', function (string $instructions): void {
 it('holds the context text as given', function (): void {
     expect(Context::text('  We were billed twice.  ')->text)->toBe('  We were billed twice.  ');
 });
+
+it('rejects empty or blank context text, which the server would answer with a meaningless 0.5', function (string $text): void {
+    Context::text($text);
+})->with(['empty' => '', 'blank' => " \t\n"])->throws(InvalidDecision::class, 'The context text must not be empty.');

@@ -43,7 +43,7 @@ Route::get('/', function (Application $app): string {
 
 /*
  * One yes/no question, end to end: SystemOne::decide() against the default connection
- * (SYSTEM_ONE_URL). ?text= replaces the default ticket. A package exception is rendered
+ * (SYSTEM_ONE_URL). A non-blank ?text= replaces the default ticket. A package exception is rendered
  * as an error page: 503 for HostUnavailable, 500 for InvalidConfiguration (the app's own
  * config is wrong), 502 for anything else.
  *
@@ -53,7 +53,12 @@ Route::get('/', function (Application $app): string {
  * list in testbench.yaml.
  */
 Route::get('/decide', function (Request $request): Response {
-    $text = $request->string('text', 'Hi, we were billed twice for March. Please refund the duplicate charge today or we will cancel our plan.')->toString();
+    // A query string can make ?text= an array (?text[]=x), and Context::text() refuses blank
+    // text: anything but a non-blank string gets the default ticket.
+    $text = $request->query('text');
+    if (! is_string($text) || trim($text) === '') {
+        $text = 'Hi, we were billed twice for March. Please refund the duplicate charge today or we will cancel our plan.';
+    }
     $churn = Question::yesNo('churn', 'Does the customer threaten to cancel or leave?');
     $status = 200;
 

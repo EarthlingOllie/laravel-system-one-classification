@@ -76,3 +76,11 @@ it('renders a configuration error with a 500 status', function (): void {
         ->assertSee('data-error="InvalidConfiguration"', escape: false)
         ->assertSee("System One connection 'nope' is not configured");
 });
+
+it('falls back to the default ticket when the text is not a string or is blank', function (string $query): void {
+    Http::fake(['*' => Http::response(['answers' => ['churn' => ['type' => 'noul', 'noul' => 0.5]]])]);
+
+    $this->get('/decide?'.$query)->assertOk()->assertSee('billed twice for March');
+
+    Http::assertSent(fn (Request $request): bool => str_contains((string) $request['state'], 'billed twice for March'));
+})->with(['array' => 'text[]=x', 'nested array' => 'text[a][b]=x', 'blank' => 'text=%20%20', 'empty' => 'text=']);
