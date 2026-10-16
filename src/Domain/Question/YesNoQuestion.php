@@ -27,6 +27,11 @@ final readonly class YesNoQuestion implements QuestionHandle
             throw InvalidDecision::emptyKey();
         }
 
+        // PHP's own rule for when an array key becomes an int: a canonical decimal in range.
+        if ((string) (int) $key === $key) {
+            throw InvalidDecision::integerKey($key);
+        }
+
         if (trim($instructions) === '') {
             throw InvalidDecision::missingInstructions($key);
         }

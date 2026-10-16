@@ -16,6 +16,15 @@ final class InvalidDecision extends InvalidArgumentException implements SystemOn
         return new self('A question key must not be empty.');
     }
 
+    /**
+     * PHP turns a key like '0' into an integer array key, so the questions would be sent as a
+     * JSON list and the answers object read back as a list.
+     */
+    public static function integerKey(string $key): self
+    {
+        return new self("Question key '{$key}' is a whole number, which PHP stores as an integer array key; use a name such as 'q{$key}'.");
+    }
+
     public static function missingInstructions(string $key): self
     {
         return new self("Question '{$key}' needs instructions.");

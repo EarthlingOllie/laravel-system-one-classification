@@ -21,6 +21,18 @@ it('rejects an empty key', function (string $key): void {
     Question::yesNo($key, 'Does the customer threaten to cancel?');
 })->with(['empty' => '', 'blank' => '  '])->throws(InvalidDecision::class, 'A question key must not be empty.');
 
+it('rejects a key PHP would turn into an integer array key', function (string $key): void {
+    Question::yesNo($key, 'Does the customer threaten to cancel?');
+})->with(['zero' => '0', 'positive' => '42', 'negative' => '-7'])->throws(InvalidDecision::class, 'is a whole number');
+
+it('names the integer-like key and suggests a word instead', function (): void {
+    Question::yesNo('0', 'Does the customer threaten to cancel?');
+})->throws(InvalidDecision::class, "Question key '0' is a whole number, which PHP stores as an integer array key; use a name such as 'q0'.");
+
+it('accepts keys that only look numeric', function (string $key): void {
+    expect(Question::yesNo($key, 'Does the customer threaten to cancel?')->key)->toBe($key);
+})->with(['leading zero' => '01', 'decimal' => '1.5', 'padded' => ' 1', 'prefixed' => 'q0', 'minus zero' => '-0', 'past PHP_INT_MAX' => '99999999999999999999']);
+
 it('rejects empty instructions', function (string $instructions): void {
     Question::yesNo('churn', $instructions);
 })->with(['empty' => '', 'blank' => " \n"])->throws(InvalidDecision::class, "Question 'churn' needs instructions.");
