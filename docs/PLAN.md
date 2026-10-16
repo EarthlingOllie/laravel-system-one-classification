@@ -1,4 +1,16 @@
-# Plan: typed PHP / Laravel client for System 1 decision models
+# Plan: `laravel-system-one-classification`
+
+A typed Laravel client for System 1 decision models (Laya, Jev and compatible models).
+
+## Decisions so far
+
+| # | Topic | Decision |
+|---|---|---|
+| 1 | Package name | `laravel-system-one-classification`. The plan uses `earthlingollie/laravel-system-one-classification`, namespace `EarthlingOllie\SystemOneClassification` and facade `SystemOne`; the vendor is provisional. |
+| 2 | AWS / Bedrock | Out of scope for now. There is no AWS connection or SigV4 transport in v1. |
+| 3 | Confidence | Every answer exposes both `confidence` values. `answerConfidence` (the probability of the reported answer) is what you threshold on, because it can be compared across models. The raw `confidence` is kept and tagged with the model profile that produced it. |
+| 4 | Local provisioning | A standalone `compose.yaml` is the primary path, with an optional Laravel Sail service. Both are offered by `system-one:install`. |
+| 5 | PHP version | PHP 8.4 minimum (with Laravel 13, which supports 8.4). We use property hooks and asymmetric visibility to keep the value objects simple. |
 
 ## Goal
 
@@ -54,17 +66,46 @@ These findings shape the design, so they come first.
   - `OMP_NUM_THREADS` caps CPU threads.
 - **Prior art:** [`marcreichel/laya-php`](https://github.com/marcreichel/laya-php)
   (Packagist, PHP 8.4+, Laravel 13+) already targets `laya-serve`. We are writing
-  our own client, but its existence affects naming (see open question 1).
-- **Not verified yet:** I couldn't read the Hugging Face model cards or
-  laya-ai.com from the build environment, which blocks both hosts. The exact
-  JSON field names below come from the PyPI README and still need checking
-  against a running container in Phase 0.
+  our own client under a different name (`laravel-system-one-classification`).
+- **Response format confirmed** on [laya-ai.com/laya-api](https://laya-ai.com/laya-api):
+
+  ```json
+  {
+    "model": "laya-rl-agent",
+    "answers": {
+      "queue":   {"type": "choice", "choice": "billing",
+                  "probabilities": {"billing": 0.9281, "tech": 0.0412, "other": 0.0307},
+                  "confidence": 0.4534, "answer_confidence": 0.9281},
+      "urgency": {"type": "score", "score": 2.6389,
+                  "legend": {"0": "calm", "1": "firm", "2": "angry", "3": "furious"},
+                  "probabilities": {"0": 0.0099, "1": 0.0713, "2": 0.536, "3": 0.3828}},
+      "refund":  {"type": "noul", "noul": 0.97}
+    },
+    "usage":   {"input_tokens": 74, "output_tokens": 0},
+    "routing": {"model": "english", "reason": "English Latin text"}
+  }
+  ```
+
+  The request takes `state` (a string or a JSON object) and `questions`, plus
+  these optional fields: `model`, `lang`, `lang_guess`, `min_confidence`,
+  `max_len`, `head_max_len` and `task`. Answers below `min_confidence` come
+  back marked as low confidence. The README names the fields `abstention` and
+  `abstention_threshold`; Phase 0 confirms the exact spelling.
+- **There is a hosted Laya API at `https://api.laya-ai.com/v1/systemone`.** It
+  is run by laya-ai.com, a third party, not by Convai, and uses the same
+  protocol with a bearer key, at $0.05 per 1,000 calls. That makes three hosts
+  behind one client: local `laya-serve`, hosted Laya, and Jev.
+- **More server settings:**
+  - `LAYA_TOURNAMENT_GROUP` raises the choice-option cap from 100 to 255.
+  - `LAYA_JEV_STRICT=1` returns only the fields in Jev's response format.
+  - The Hugging Face checkpoint (`convaiinnovations/laya`, Apache-2.0) is at
+    revision `7b928d8`.
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ Laravel layer   ServiceProvider · config/systemone.php ·     │
+│ Laravel layer   ServiceProvider · config/system-one.php ·     │
 │                 Facade · Fake · artisan commands · events    │
 ├─────────────────────────────────────────────────────────────┤
 │ Client          DecisionClient::decide(Decision): Result     │
@@ -82,7 +123,7 @@ These findings shape the design, so they come first.
 │                      timeout · retries                       │
 └─────────────────────────────────────────────────────────────┘
           │                                  │
-   local: laya-serve in Docker       jev: TypeSafe hosted API
+   local: laya-serve in Docker   laya-hosted: api.laya-ai.com   jev: TypeSafe
 ```
 
 ### The two abstractions you asked for
@@ -95,12 +136,9 @@ These findings shape the design, so they come first.
    with a clear exception instead of a 413 or 422 from the server. To switch
    models, change the profile and the model name in config.
 2. **Host** → a named `Connection` in config, set up the way Laravel database
-   connections are (`local`, `jev`, and later `aws`). Every connection uses the
-   same `HttpTransport`. The `Transport` interface stays as a small seam for two
-   reasons: the testing fake, and a host that can't be reached over plain HTTP
-   (for example a SageMaker endpoint that needs SigV4 signing; see open
-   question 3). Until such a host exists, there is only one real
-   implementation.
+   connections are (`local`, `laya-hosted`, `jev`). Every connection uses the
+   same `HttpTransport`. The `Transport` interface exists only so the testing
+   fake can replace HTTP. AWS is out of scope (decision 2).
 
 ### Proposed public API
 
@@ -130,11 +168,13 @@ $decision = Decision::about(Context::text($ticket->body))   // or Context::field
     ->ask($department, $urgency, $churn)
     ->withMinConfidence(0.6);                                // returns a new instance; Decision is immutable
 
-$result = SystemOne::decide($decision);                      // default connection
+$result = SystemOne::decide($decision);                      // default connection (local)
 $result = SystemOne::connection('jev')->decide($decision);   // the same call against a different host
 
 $result->get($department)->value;                            // Department::Billing (ChoiceAnswer<Department>)
-$result->get($department)->probability;                      // P(chosen answer), comparable across models
+$result->get($department)->answerConfidence;                 // P(reported answer): threshold on this
+$result->get($department)->confidence;                       // Confidence { value, profile } (raw model-specific value)
+$result->get($department)->isConfident(0.8);                 // shorthand for answerConfidence >= 0.8
 $result->get($department)->probabilityOf(Department::Other); // float
 $result->get($department)->distribution;                     // Distribution<Department>, ordered
 $result->get($urgency)->value;                               // Urgency::High
@@ -147,9 +187,11 @@ $result->meta;                                               // model / checkpoi
 ```
 
 How the typing works:
-- **Everything is immutable.** All value objects are `final readonly class`.
-  Builder methods (`ask`, `withMinConfidence`, `withModel`) return a new
-  instance.
+- **Everything is immutable.** Value objects are `final` classes whose
+  properties use PHP 8.4 asymmetric visibility (`public private(set)`), with
+  property hooks for derived values such as `isConfident`. There are no getter
+  methods. Builder methods (`ask`, `withMinConfidence`, `withModel`) return a
+  new instance.
 - **Typed results without casting, through generics.** The answer type is a
   PHPStan or Psalm generic. `ChoiceQuestion<TEnum of BackedEnum>` extends
   `Question<ChoiceAnswer<TEnum>>`, and `Result::get(Question<TAnswer>): TAnswer`
@@ -169,7 +211,7 @@ How the typing works:
 
 ### Laravel integration
 
-- `config/systemone.php` has a default connection and named connections, each
+- `config/system-one.php` has a default connection and named connections, each
   with its own profile.
 - A singleton is bound in the container and exposed through a `SystemOne`
   facade.
@@ -180,10 +222,10 @@ How the typing works:
 - Optional result caching through Laravel's cache, keyed on the decision, the
   model and the checkpoint revision.
 - Artisan commands:
-  - `systemone:install` publishes the config and Compose files.
-  - `systemone:health` checks the server's health and which checkpoints are
+  - `system-one:install` publishes the config and Compose files.
+  - `system-one:health` checks the server's health and which checkpoints are
     loaded.
-  - `systemone:try` runs a question set against some text from the CLI.
+  - `system-one:try` runs a question set against some text from the CLI.
 
 ### Docker (part of the package)
 
@@ -196,8 +238,12 @@ docker/
 
 - Default: `LAYA_MODELS=english` and `LAYA_PRELOAD=1`, which keeps RAM use down.
   The multilingual checkpoint is opt-in.
-- `systemone:install` either publishes `compose.yaml` into the app or adds a
-  service to Laravel Sail's `docker-compose.yml` (see open question 10).
+- `system-one:install` asks which to set up:
+  - **Standalone** (the default): publishes `compose.system-one.yaml` into the
+    app and sets `SYSTEM_ONE_URL=http://localhost:8000` in `.env`.
+  - **Sail**: adds a `laya` service to the app's Sail `docker-compose.yml` and
+    sets `SYSTEM_ONE_URL=http://laya:8000`, so it is reachable from the
+    `laravel.test` container.
 - The repo also has its own dev Compose file, which runs a PHP container next to
   `laya` for integration tests. CI runs the same setup with the HF cache volume
   cached between runs.
@@ -213,7 +259,7 @@ src/
   Transport/     Transport, HttpTransport, FakeTransport
   Laravel/       SystemOneServiceProvider, Facades/SystemOne, Commands/*, Events/*, Testing/Fake
   Exceptions/
-config/systemone.php
+config/system-one.php
 docker/
 tests/{Unit,Contract,Integration}
 ```
@@ -225,7 +271,8 @@ tests/{Unit,Contract,Integration}
    - Record real request and response fixtures for each question type, for
      batch calls, for abstention and for each error code.
    - Get Jev's OpenAPI spec (`api.typesafe.ai/openapi.json`) and compare it
-     with what we recorded.
+     with what we recorded. Confirm whether `noul` answers include
+     `answer_confidence`, and how low-confidence answers are marked.
    - Measure CPU latency and RAM on an Intel dev machine and an Apple Silicon
      dev machine.
 1. **Docker:** the Dockerfile, the Compose file, a healthcheck, a pinned
@@ -240,72 +287,39 @@ tests/{Unit,Contract,Integration}
    install flow and Sail option.
 5. **Ergonomics:** `decideMany` (the batch endpoint), caching, retries and
    timeouts, and docs and examples.
-6. **Beyond local:** check the `jev` connection against the real API, and write
-   a guide for the chosen AWS hosting option.
+6. **Remote hosts:** check the `laya-hosted` and `jev` connections against
+   the real APIs.
 
 ## Open architectural questions
 
-1. **Package name and namespace.** `laya-php` is already a Packagist package
-   name (`marcreichel/laya-php`). Our client also isn't tied to Laya, so I'd
-   suggest a neutral name, for example `vendor/systemone` with the namespace
-   `Vendor\SystemOne`. The plan uses `SystemOne` as a placeholder. What vendor
-   name and package name should we use?
-2. **Laravel-only, or a framework-agnostic core with a Laravel bridge?** A
-   Laravel-only package can use the `Http` client, `Http::fake` and the
-   container directly, and is less code. An agnostic core (PSR-18 and PSR-17)
-   would keep it usable from other frameworks. *Recommendation: keep `src/`
-   minus `Laravel/` free of framework imports (that costs little), but depend
-   on `illuminate/http` for the transport and ship it as one package.*
-3. **AWS hosting target.** Bedrock most likely can't host this model: it is an
-   encoder and isn't one of the supported Custom Model Import architectures.
-   Please verify that before we rule it out. Bedrock and SageMaker endpoints
-   also need SigV4-signed `InvokeModel` or `InvokeEndpoint` calls, which plain
-   HTTP can't make. The options:
-   - **(a) ECS/Fargate or EKS running the same `laya-serve` image behind a
-     load balancer.** It stays plain HTTP, so no adapter is needed.
-     *Recommended.*
-   - **(b) SageMaker.** Needs a `SigV4Transport`.
-   - **(c) Jev enterprise only.**
-4. **Confidence across models.** Laya and Jev compute `confidence` differently.
-   *Recommendation: make `probability` (the probability of the chosen answer)
-   the main number you threshold on, and expose the raw `confidence` as a
-   value tagged with the profile that produced it.* Do you agree?
-5. **Question identity.** Should questions have explicit string keys
-   (`Question::choice('department', …)`, as in the plan) or keys generated from
-   the handle? Explicit keys are stable in logs, caches and fixtures, but you
-   have to name each question.
-6. **Enum conventions.**
-   - Should descriptions come from a `#[Describe]` attribute (as in the plan)
-     or from an interface method such as `describe(): string`? An interface
-     method allows translation.
-   - Should score order follow the int backing value (as in the plan) or the
-     order the cases are declared in?
-7. **Abstention typing.** When the model abstains, should `value` be nullable
-   (`?TEnum`), which is honest but forces a null check on every read? Or should
-   `value` always hold the model's best guess, with `abstained()` as a separate
-   flag? The plan assumes the second.
-8. **Declarative "decision classes."** As well as question handles, should we
-   support a readonly DTO whose constructor parameters carry `#[Ask]`
-   attributes and get filled in from the result? It's ergonomic but adds
-   reflection. *Recommendation: handles in v1, consider DTOs later.*
-9. **Minimum PHP and Laravel versions.** One option is PHP 8.3 with Laravel
-   12 and 13, for the widest reach. The other is PHP 8.4 with Laravel 13, which
-   allows property hooks and asymmetric visibility and keeps the value objects
-   simpler.
-10. **How the local model is provisioned in a consuming app.**
-    - **(a)** Publish a standalone `compose.yaml`.
-    - **(b)** Add a service to Laravel Sail.
-    - **(c)** Both, chosen at `systemone:install`.
+Questions 1 to 5 from the first draft are settled (see the decisions table at
+the top). These are still open, and each has a recommendation:
 
-    Two related decisions:
-    - Do we build the image locally from our Dockerfile, or publish a prebuilt
-      image to GHCR? A prebuilt image gives faster onboarding but adds a
-      release pipeline, and the image is several GB.
-    - Which checkpoints are loaded by default? English only uses less RAM.
-      Adding multilingual covers non-English input.
-11. **Sync, batch and queues.** Is a synchronous `decide()` plus `decideMany()`
-    enough for v1, or do we want queued or async dispatch, or concurrent
-    requests through `Http::pool`, from the start?
-12. **Caching and data handling.** Should result caching be on by default? Can
-    context text be logged or sent to events (PII)? For the Jev connection, is
-    sending data to a third party acceptable?
+1. **Vendor name.** Should we publish as `earthlingollie/…`, or under an
+   organisation?
+2. **Laravel-only, or a framework-agnostic core?** *Recommendation: ship one
+   Laravel package that depends on `illuminate/http`, but keep everything
+   outside `src/Laravel/` free of other framework imports.*
+3. **Question identity.** *Recommendation: explicit string keys
+   (`Question::choice('department', …)`), because they stay stable in logs,
+   caches and fixtures.*
+4. **Enum conventions.** *Recommendation: descriptions from a `#[Describe]`
+   attribute, with an optional `DescribesCases` interface for translated text.
+   Score order follows the int backing value.*
+5. **Abstention typing.** *Recommendation: `value` always holds the model's best
+   guess, and a separate `abstained` flag marks low-confidence answers.
+   Otherwise every read of a nullable value needs a null check.*
+6. **Declarative "decision classes"** (readonly DTOs whose constructor
+   parameters carry `#[Ask]`). *Recommendation: question handles in v1,
+   consider DTOs later.*
+7. **Local image.** Do we build from our Dockerfile on the dev machine, or
+   publish a prebuilt image to GHCR? *Recommendation: build locally in v1.*
+   Which checkpoints are loaded by default? *Recommendation: English only,
+   with multilingual opt-in.*
+8. **Sync, batch and queues.** *Recommendation: synchronous `decide()` and
+   `decideMany()` (the batch endpoint) in v1. Queued and concurrent dispatch
+   later.*
+9. **Caching and data handling.** *Recommendation: caching off by default, and
+   context text never logged by default.* The `laya-hosted` and `jev`
+   connections send text to third parties; does that need a guard, such as an
+   explicit opt-in per connection?
