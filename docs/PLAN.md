@@ -528,8 +528,10 @@ How the typing works:
       `ResultSet`'s usage is null.
     - #7 abstention (done on the integration branch): `FakeAnswer::abstained($script)`
       keeps the script's value and reads as `Abstained` at the decision's
-      `min_confidence`; every other answer on a gated decision reads as `Passed` at it,
-      and as `NotRequested` on an ungated one. An abstained script asked for by a
+      `min_confidence`. Every other answer on a gated decision is gated as laya-serve
+      gates it, on `answer_confidence` (for yes/no, the probability of the side
+      reported): `Abstained` below the threshold, `Passed` otherwise; on an ungated
+      decision it reads as `NotRequested`. An abstained script asked for by a
       decision with no `min_confidence` is an `InvalidFakeAnswer`: no server would
       abstain on it.
     - #6 `ModelProfile` (done on the integration branch): `FakeConnection::$profile` is

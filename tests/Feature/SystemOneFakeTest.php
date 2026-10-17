@@ -458,3 +458,28 @@ it('refuses event and cache settings the real client refuses', function (array $
     'cache.ttl' => [['system-one.cache.enabled' => true, 'system-one.cache.ttl' => 'abc'], "config/system-one.php has a 'cache.ttl' that is not a whole number of seconds above zero."],
     'cache.store' => [['system-one.cache.enabled' => true, 'system-one.cache.store' => ['redis']], "config/system-one.php has a 'cache.store' that is not a store name."],
 ]);
+
+// Review finding: Laya's gate compares answer_confidence with min_confidence (docs/PLAN.md, Phase
+// 0), so a script below the decision's threshold abstains, as the server's answer would.
+it('abstains on a script whose answer confidence is below the decision\'s threshold, as the gate does', function (): void {
+    $churn = fakeChurn();
+    $department = fakeDepartmentQuestion();
+    $urgency = fakeUrgencyQuestion();
+    SystemOne::fake([
+        FakeAnswer::yesNo($churn, 0.3),
+        FakeAnswer::choice($department, Department::Billing, confidence: 0.6),
+        FakeAnswer::score($urgency, Urgency::High, expected: 1.2),
+    ]);
+
+    $result = SystemOne::decide(aboutTicket()->ask($churn, $department, $urgency)->withMinConfidence(0.65));
+
+    // yes/no: the reported "no" at 0.7 passes; the choice at 0.6 abstains; the score's case
+    // keeps 0.6 of the probability (the rest on Low) to reach 1.2, so it abstains.
+    expect($result->get($churn)->abstention)->toBe(Abstention::Passed)
+        ->and($result->get($department)->abstention)->toBe(Abstention::Abstained)
+        ->and($result->get($department)->value)->toBe(Department::Billing)
+        ->and($result->get($urgency)->answerConfidence)->toBeLessThan(0.65)
+        ->and($result->get($urgency)->abstention)->toBe(Abstention::Abstained);
+
+    expect(SystemOne::decide(aboutTicket()->ask($department)->withMinConfidence(0.6))->get($department)->abstention)->toBe(Abstention::Passed);
+});

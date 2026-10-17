@@ -43,8 +43,8 @@ use function max;
  * of the connection the fake answers on.
  *
  * Their abstention is what a server reports for the decision they answer: none (NotRequested)
- * unless it sets a minimum confidence, and then Passed, or Abstained for an abstained() script,
- * at that threshold.
+ * unless it sets a minimum confidence, and then, at that threshold, Abstained when the answer's
+ * confidence is below it (or for an abstained() script), Passed otherwise.
  *
  * @template-covariant TAnswer of Answer
  */
@@ -55,11 +55,14 @@ final readonly class FakeAnswer
      * @param  Closure(string, Abstention, ?float): TAnswer  $answer  builds the answer for a
      *                                                                connection's profile and
      *                                                                the decision's gate
-     * @param  bool  $abstains  whether the answer abstains when the decision is gated
+     * @param  float  $answerConfidence  what the gate compares: the server's `answer_confidence`
+     * @param  bool  $abstains  whether the answer abstains when the decision is gated, whatever
+     *                          its confidence (abstained())
      */
     private function __construct(
         public QuestionHandle $question,
         private Closure $answer,
+        private float $answerConfidence,
         private bool $abstains = false,
     ) {}
 
@@ -75,7 +78,7 @@ final readonly class FakeAnswer
      */
     public static function abstained(self $answer): self
     {
-        return new self($answer->question, $answer->answer, abstains: true);
+        return new self($answer->question, $answer->answer, $answer->answerConfidence, abstains: true);
     }
 
     /**
@@ -89,7 +92,12 @@ final readonly class FakeAnswer
     {
         Probability::check('A probability', $probability);
 
-        return new self($question, static fn (string $profile, Abstention $abstention, ?float $threshold): YesNoAnswer => new YesNoAnswer($probability, $abstention, $threshold));
+        // laya-serve's answer_confidence for a yes/no answer: the probability of the side reported.
+        return new self(
+            $question,
+            static fn (string $profile, Abstention $abstention, ?float $threshold): YesNoAnswer => new YesNoAnswer($probability, $abstention, $threshold),
+            max($probability, 1.0 - $probability),
+        );
     }
 
     /**
@@ -131,7 +139,7 @@ final readonly class FakeAnswer
             $distribution,
             $abstention,
             $threshold,
-        ));
+        ), $confidence);
     }
 
     /**
@@ -193,7 +201,7 @@ final readonly class FakeAnswer
             $distribution,
             $abstention,
             $threshold,
-        ));
+        ), $answerConfidence);
     }
 
     /**
@@ -218,8 +226,9 @@ final readonly class FakeAnswer
     }
 
     /**
-     * The answer, its raw confidence tagged with the given model profile, gated as a server
-     * gates it at the decision's minimum confidence.
+     * The answer, its raw confidence tagged with the given model profile, gated as laya-serve
+     * gates it at the decision's minimum confidence: Abstained below it (comparing
+     * `answer_confidence`, as the server does) or for an abstained() script, Passed otherwise.
      *
      * @return TAnswer
      *
@@ -233,7 +242,9 @@ final readonly class FakeAnswer
                 : ($this->answer)($profile, Abstention::NotRequested, null);
         }
 
-        return ($this->answer)($profile, $this->abstains ? Abstention::Abstained : Abstention::Passed, $minConfidence);
+        $abstains = $this->abstains || $this->answerConfidence < $minConfidence;
+
+        return ($this->answer)($profile, $abstains ? Abstention::Abstained : Abstention::Passed, $minConfidence);
     }
 
     /**
