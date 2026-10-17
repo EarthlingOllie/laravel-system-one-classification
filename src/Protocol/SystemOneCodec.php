@@ -111,11 +111,11 @@ final readonly class SystemOneCodec
         $status = $response->status;
 
         if ($status >= 500) {
-            throw HostUnavailable::serverError($status, self::detail($body));
+            throw HostUnavailable::serverError($status, ErrorDetail::of($response->body));
         }
 
         if ($status >= 400) {
-            throw RejectedByModel::withStatus($status, self::detail($body));
+            throw RejectedByModel::withStatus($status, ErrorDetail::of($response->body));
         }
 
         if ($status < 200 || $status >= 300) {
@@ -520,13 +520,5 @@ final readonly class SystemOneCodec
         }
 
         return (float) $value;
-    }
-
-    /** The `{"detail": "..."}` message laya-serve and Jev put on every error, if present. */
-    private static function detail(mixed $body): ?string
-    {
-        $detail = is_array($body) ? ($body['detail'] ?? null) : null;
-
-        return is_string($detail) ? $detail : null;
     }
 }

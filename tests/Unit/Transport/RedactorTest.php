@@ -86,6 +86,11 @@ it('keeps slashes and non-ASCII text in a JSON body as they were', function (): 
         ->toBe('{"detail":"Schlüssel *** für /v1/systemone"}');
 });
 
+it('keeps the body JSON when masking a key splits a character of the text', function (): void {
+    // The key is one byte of "é": masking it leaves invalid UTF-8, substituted, not an error.
+    expect((new Redactor("\xA9"))->redactBody('{"detail":"café"}'))->toBe("{\"detail\":\"caf\u{FFFD}***\"}");
+});
+
 it('masks a JSON string body and leaves other JSON scalars alone', function (string $body, string $redacted): void {
     expect((new Redactor('k3y'))->redactBody($body))->toBe($redacted);
 })->with([
