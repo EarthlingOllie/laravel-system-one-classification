@@ -29,10 +29,13 @@ declare(strict_types=1);
  *                built in), for Jev all of them. A list, or a comma-separated string.
  *   model        the model to ask when a decision pins none, such as 'english'; it is accepted
  *                as one of the connection's models. Empty lets the server choose.
- *   retries      how often (at most 10) to try again when the host cannot be reached or answers with a 5xx
- *                (a 4xx is never retried); empty means none
+ *   retries      how often (at most 10) to try again when the host cannot be reached, times
+ *                out or answers with a 5xx (a 4xx is never retried); empty means none. A
+ *                timed-out request may still have been answered, and billed, by the host, and
+ *                a host that never answers holds a decision for (retries + 1) x timeout seconds
+ *                plus the waits: keep both small where that matters.
  *   retry_delay  milliseconds to wait before the first retry, doubled before each further one
- *                (at most 30 s); empty means 200
+ *                (at most 30 s; a longer Retry-After from a 5xx wins); empty means 200
  *   remote       true for a host off this machine: then an api_key is required and the url
  *                must be https (http is allowed only to localhost)
  */
