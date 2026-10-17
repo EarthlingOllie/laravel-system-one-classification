@@ -11,7 +11,6 @@ use stdClass;
 use function array_filter;
 use function array_keys;
 use function array_map;
-use function array_values;
 use function get_object_vars;
 use function is_array;
 use function is_string;
@@ -125,7 +124,7 @@ final readonly class Redactor
      */
     private function mask(string $text, array $patterns): string
     {
-        return preg_replace(array_keys($patterns), array_values($patterns), str_replace($this->secrets, self::MASK, $text)) ?? self::MASK;
+        return preg_replace(array_keys($patterns), $patterns, str_replace($this->secrets, self::MASK, $text)) ?? self::MASK;
     }
 
     private function redactStrings(mixed $value): mixed

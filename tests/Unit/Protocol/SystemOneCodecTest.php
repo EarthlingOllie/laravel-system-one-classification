@@ -213,7 +213,7 @@ it('cuts a plain-text message to 200 characters, counting characters, not bytes'
         expect($rejected->detail)->toBe($detail);
     }
 })->with([
-    'longer' => [str_repeat('é', 201), str_repeat('é', 200).'…'],
+    'longer' => ['a'.str_repeat('é', 200), 'a'.str_repeat('é', 199).'…'],
     'exactly 200' => [str_repeat('é', 200), str_repeat('é', 200)],
 ]);
 

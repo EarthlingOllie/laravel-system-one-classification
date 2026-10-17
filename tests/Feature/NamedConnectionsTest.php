@@ -278,7 +278,8 @@ it('retries nothing for a connection that sets no retries', function (mixed $ret
     config(['system-one.connections.other' => ['url' => 'http://other.test', 'retries' => $retries, 'retry_delay' => 10]]);
     Http::fake(['*' => Http::response(['detail' => 'down'], 500)]);
 
-    expect(fn () => SystemOne::connection('other')->decide(namedDecision()))->toThrow(HostUnavailable::class);
+    expect(fn () => SystemOne::connection('other')->decide(namedDecision()))->toThrow(HostUnavailable::class)
+        ->and(app(SystemOneManager::class)->configuration('other')->retry->retries)->toBe(0);
     Http::assertSentCount(1);
 })->with(['unset' => null, 'empty' => '', 'zero' => 0, 'zero string' => '0']);
 
