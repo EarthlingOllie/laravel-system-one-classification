@@ -369,7 +369,9 @@ final readonly class SystemOneCodec
 
     /**
      * The legend must name every level, by index, with the description that was sent: a
-     * mismatch means the server scored some other scale.
+     * mismatch means the server scored some other scale. A level sent without a description
+     * (null, where the profile allows it) has nothing to compare, so its entry may be null,
+     * any text, or missing.
      *
      * @template TEnum of BackedEnum
      *
@@ -386,6 +388,15 @@ final readonly class SystemOneCodec
 
         $expected = $question->criteria();
         $sorted = $legend;
+
+        foreach ($expected as $index => $description) {
+            $entry = $sorted[$index] ?? null;
+
+            if ($description === null && ($entry === null || is_string($entry))) {
+                $sorted[$index] = null;
+            }
+        }
+
         ksort($sorted);
 
         if ($sorted !== $expected) {
