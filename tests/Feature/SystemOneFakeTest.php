@@ -234,6 +234,28 @@ it('answers on the configured default connection', function (): void {
         ->toStartWith('No decision matching the callback was made (1 decision was made).');
 });
 
+it('fakes a remote connection that has no API key, since nothing is sent to it', function (): void {
+    // The shipped jev connection is remote and, with no SYSTEM_ONE_JEV_API_KEY, keyless: the
+    // real manager refuses to send to it, but a test of the app's jev path needs no real key.
+    config(['system-one.connections.jev.api_key' => null]);
+    $churn = fakeChurn();
+    $fake = SystemOne::fake([FakeAnswer::yesNo($churn, 0.8)]);
+
+    $answer = SystemOne::connection('jev')->decide(aboutTicket()->ask($churn))->get($churn);
+
+    expect($answer->probability)->toBe(0.8)
+        ->and(fn (): mixed => app(SystemOneManager::class)->connection('jev'))
+        ->toThrow(InvalidConfiguration::class, "System One connection 'jev' is a remote host, so it needs an 'api_key'");
+    $fake->assertDecided(fn (Decision $decision, string $connection): bool => $connection === 'jev');
+});
+
+it('still checks a remote connection\'s url under the fake', function (): void {
+    config(['system-one.connections.jev.url' => 'http://jev.example']);
+    SystemOne::fake();
+
+    SystemOne::connection('jev');
+})->throws(InvalidConfiguration::class, "System One connection 'jev' is a remote host, so its 'url' must use https");
+
 it('refuses a connection that is not configured, as the real client does', function (): void {
     SystemOne::fake();
 

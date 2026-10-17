@@ -511,9 +511,11 @@ How the typing works:
     certain), or after `->strict()` an `UnscriptedQuestion` naming any same-key script and
     what differs.
   - The fake encodes each decision with `SystemOneCodec` first, so it refuses (and does
-    not record) what the real client refuses; and it has the real manager build each
-    connection's client (which connects to nothing), so a connection config the real
-    client refuses is refused under the fake too.
+    not record) what the real client refuses, with the connection's `ModelProfile` (so
+    its limits apply too); and it has the real manager check each connection with
+    `configuration()`, so a connection config the real client refuses is refused under
+    the fake too, except a remote host's missing API key: nothing is sent, so faking
+    `jev` needs no real key (integration branch).
   - `assertDecided(fn (Decision, string $connection): bool)`, `assertDecidedTimes(n)`,
     `assertNothingDecided()` and `assertAsked($question)` (some result reads that handle).
     They use PHPUnit's `Assert`, which an app's test suite always has.
@@ -526,14 +528,10 @@ How the typing works:
       cover batches unchanged.
     - #7 abstention: `FakeAnswer::abstained($q, …)`, the issue's "abstained answer",
       needs answers to carry `Abstention`, which only #7 adds. Until then it is not built.
-    - #6 `ModelProfile`: `FakeConnection::$profile` and the fake's profile lookup become
-      the connection's `ModelProfile` (the raw confidence could then use its formula), and
-      the fake should check limits through the same codec call it already makes.
-    - #9 named connections: `connection()` already works under the fake for any
-      configured name. If #9 adds methods to the client, `Decider` and `FakeConnection`
-      need them. Since the fake checks connections through the manager, #9's "remote
-      connection with no key" error will apply under the fake too: decide then whether
-      tests should set a dummy key (faithful) or the fake should skip that check.
+    - #6 `ModelProfile` (done on the integration branch): `FakeConnection::$profile` is
+      the connection's `ModelProfile`; answers are tagged with its `name`.
+    - #9 named connections (done on the integration branch): the fake checks connections
+      with `configuration()`, so the remote-host key rule does not apply under it.
 - Events: `DecisionMade` and `DecisionFailed`. Logging the context text is off
   by default, because it may contain PII.
 - Optional result caching through Laravel's cache, keyed on the decision, the

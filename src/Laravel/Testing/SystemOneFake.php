@@ -32,7 +32,8 @@ use function count;
  *   or, once strict(), an UnscriptedQuestion.
  * - A decision the real client would refuse (no questions, an unknown question type) is
  *   refused the same way, and not recorded. So is a connection: the real SystemOneManager
- *   checks it, though nothing is ever sent to it. Its profile tags each answer's raw
+ *   checks it (configuration(), which needs no API key for a remote host, as nothing is ever
+ *   sent to it). Its profile tags each answer's raw
  *   confidence ('laya' when unset or empty).
  *
  * The only stateful class of the package (docs/PLAN.md, Quality bar).
@@ -69,12 +70,11 @@ final class SystemOneFake implements ConnectionResolver, Fake
     /** @throws InvalidConfiguration when the connection is not configured */
     public function connection(?string $name = null): FakeConnection
     {
-        $name ??= $this->manager->defaultConnection();
-        // The real manager checks the connection (building its client connects to nothing), so a
-        // config the real client refuses is refused here too, by the same rules.
-        $this->manager->connection($name);
+        // The real manager checks the connection, so a config the real client refuses is refused
+        // here too, by the same rules: all but a remote host's API key, as nothing is sent.
+        $config = $this->manager->configuration($name);
 
-        return new FakeConnection($this, $name, $this->manager->configuration($name)->profile);
+        return new FakeConnection($this, $config->name, $config->profile);
     }
 
     /** @throws InvalidConfiguration when the default connection is not configured */

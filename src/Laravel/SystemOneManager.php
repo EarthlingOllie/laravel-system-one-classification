@@ -144,22 +144,6 @@ final readonly class SystemOneManager implements ConnectionResolver
     }
 
     /**
-     * The name of the connection decide() uses (`system-one.default`).
-     *
-     * @throws InvalidConfiguration when it is not set
-     */
-    public function defaultConnection(): string
-    {
-        $name = $this->config->get('system-one.default');
-
-        if (! is_string($name)) {
-            throw InvalidConfiguration::noDefaultConnection();
-        }
-
-        return $name;
-    }
-
-    /**
      * The connection's model profile, from its `profile`, `tournament_grouping` and `models`,
      * plus its default `model`: naming it is as good as listing it.
      *
@@ -311,5 +295,21 @@ final readonly class SystemOneManager implements ConnectionResolver
         }
 
         return $names;
+    }
+
+    /**
+     * The name of the connection decide() uses (`system-one.default`).
+     *
+     * @throws InvalidConfiguration when it is not set
+     */
+    private function defaultConnection(): string
+    {
+        $name = $this->config->get('system-one.default');
+
+        if (! is_string($name)) {
+            throw InvalidConfiguration::noDefaultConnection();
+        }
+
+        return $name;
     }
 }
