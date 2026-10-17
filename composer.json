@@ -17,6 +17,7 @@
     },
     "require-dev": {
         "infection/infection": "^0.35.8",
+        "justinrainbow/json-schema": "^6.13",
         "larastan/larastan": "^3.13",
         "laravel/pint": "^1.32",
         "orchestra/testbench": "^11.3",
