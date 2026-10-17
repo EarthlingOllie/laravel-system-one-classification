@@ -11,9 +11,10 @@ use EarthlingOllie\SystemOneClassification\Exceptions\SystemOneException;
  * `throw new \InvalidArgumentException(...)` would pass every arch rule; this test reads
  * the tokens instead.
  *
- * It understands the two forms the package uses, `throw new Name(...)` and
- * `throw Name::factory(...)`, resolving Name through the file's namespace and `use`
- * imports. Anything else (rethrowing a variable, say) fails, because it cannot be checked.
+ * It understands the forms the package uses, `throw new Name(...)`, `throw Name::factory(...)`
+ * and `throw $e;` where `$e` is the variable of a `catch (Name $e)` with a single type,
+ * resolving Name through the file's namespace and `use` imports. Anything else (rethrowing
+ * any other variable, say) fails, because it cannot be checked.
  */
 
 /**
@@ -30,6 +31,7 @@ function thrownClasses(string $code): array
     ));
     $namespace = '';
     $imports = [];
+    $caught = [];
     $throws = [];
 
     foreach ($tokens as $i => $token) {
@@ -44,6 +46,11 @@ function thrownClasses(string $code): array
             $imports[strtolower($alias)] = $name;
         }
 
+        // `catch (Name $var)`: remembered so `throw $var;` can be checked. A union is not.
+        if ($token->is(T_CATCH) && $tokens[$i + 3]->is(T_VARIABLE)) {
+            $caught[$tokens[$i + 3]->text] = $tokens[$i + 2];
+        }
+
         if (! $token->is(T_THROW)) {
             continue;
         }
@@ -52,6 +59,7 @@ function thrownClasses(string $code): array
         $nameToken = match (true) {
             $next->is(T_NEW) => $tokens[$i + 2],
             $tokens[$i + 2]->is(T_DOUBLE_COLON) => $next,
+            $next->is(T_VARIABLE) && $tokens[$i + 2]->text === ';' => $caught[$next->text] ?? null,
             default => null,
         };
 
@@ -100,7 +108,7 @@ function throwsOutsideTheMarker(iterable $files): array
 
             if ($class === null) {
                 $problems[] = "{$where}: throws something other than `new Name` or `Name::factory()`.";
-            } elseif (! class_exists($class) || ! is_subclass_of($class, SystemOneException::class)) {
+            } elseif (! (class_exists($class) || interface_exists($class)) || ! is_a($class, SystemOneException::class, true)) {
                 $problems[] = "{$where}: throws {$class}, which does not implement SystemOneException.";
             }
         }
@@ -159,7 +167,30 @@ it('flags a throw that would get past catch (SystemOneException)', function (str
         "<?php\nnamespace EarthlingOllie\\SystemOneClassification\\Laravel;\n\nfunction f(Throwable \$e): void {\n    throw \$e;\n}\n",
         'throws something other than `new Name` or `Name::factory()`.',
     ],
+    'rethrown catch variable of a wider type' => [
+        "<?php\nnamespace EarthlingOllie\\SystemOneClassification\\Laravel;\n\nfunction f(): void { try { g(); } catch (\\Throwable \$e) {\n    throw \$e;\n} }\n",
+        'throws Throwable, which does not implement SystemOneException.',
+    ],
+    'rethrown catch variable of a union type' => [
+        "<?php\nnamespace EarthlingOllie\\SystemOneClassification\\Laravel;\nuse EarthlingOllie\\SystemOneClassification\\Exceptions\\SystemOneException;\nfunction f(): void { try { g(); } catch (SystemOneException|\\Error \$e) {\n    throw \$e;\n} }\n",
+        'throws something other than `new Name` or `Name::factory()`.',
+    ],
+    'rethrown variable another catch bound' => [
+        "<?php\nnamespace EarthlingOllie\\SystemOneClassification\\Laravel;\nuse EarthlingOllie\\SystemOneClassification\\Exceptions\\SystemOneException;\nfunction f(\$other): void { try { g(); } catch (SystemOneException \$e) {}\n    throw \$other;\n}\n",
+        'throws something other than `new Name` or `Name::factory()`.',
+    ],
 ]);
+
+it('accepts rethrowing the variable of a catch that only catches package exceptions', function (): void {
+    $file = tempnam(sys_get_temp_dir(), 'throws').'.php';
+    file_put_contents($file, "<?php\nnamespace EarthlingOllie\\SystemOneClassification\\Laravel;\nuse EarthlingOllie\\SystemOneClassification\\Exceptions\\SystemOneException;\nfunction f(): void { try { g(); } catch (SystemOneException \$e) {\n    throw \$e;\n} }\n");
+
+    try {
+        expect(throwsOutsideTheMarker([new SplFileInfo($file)]))->toBe([]);
+    } finally {
+        unlink($file);
+    }
+});
 
 it('accepts a throw of a package exception', function (): void {
     $file = tempnam(sys_get_temp_dir(), 'throws').'.php';
