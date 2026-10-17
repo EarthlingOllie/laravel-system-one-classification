@@ -28,8 +28,9 @@ it('runs every example in CI: each one is either the fake example or has expecta
 });
 
 it('runs the fake example with no model server, every assertion of it passing', function (): void {
-    // Nothing listens here: an answer can only have come from the fake.
-    $run = Example::run(Example::WITHOUT_SERVER, ['SYSTEM_ONE_URL' => closedPort()]);
+    // Nothing listened at this port a moment ago, and the scripted values asserted below can only
+    // come from the fake. Isolated from the shell's SYSTEM_ONE_*, so it runs on the defaults.
+    $run = Example::run(Example::WITHOUT_SERVER, ['SYSTEM_ONE_URL' => closedPort()], isolated: true);
 
     expect($run->exitCode)->toBe(0, $run->transcript())
         ->and($run->errors)->toBe('', $run->transcript())

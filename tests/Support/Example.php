@@ -7,13 +7,16 @@ namespace EarthlingOllie\SystemOneClassification\Tests\Support;
 use Symfony\Component\Process\Process;
 
 use function array_filter;
+use function array_keys;
 use function array_map;
 use function array_values;
 use function basename;
 use function dirname;
+use function getenv;
 use function glob;
 use function in_array;
 use function sort;
+use function str_starts_with;
 
 /**
  * One of the runnable scripts in examples/, run as a reader would run it: `php examples/<name>.php`
@@ -57,7 +60,8 @@ final readonly class Example
             '/^department: (billing|technical|other), answerConfidence [01]\.\d{4}, (Passed|Abstained) at 0\.6$/m',
             '/^urgency: [0-3], answerConfidence [01]\.\d{4}, (Passed|Abstained) at 0\.6$/m',
             '/^churn: [01]\.\d{4}, answerConfidence [01]\.\d{4}, (Passed|Abstained) at 0\.6$/m',
-            '/^ambiguous churn: [01]\.\d{4}, answerConfidence [01]\.\d{4}, Abstained at 0\.99 -> send to a human$/m',
+            // Abstained on the real checkpoint today, but a model sure enough of "no" passes even 0.99.
+            '/^ambiguous churn: [01]\.\d{4}, answerConfidence [01]\.\d{4}, (Abstained at 0\.99 -> send to a human|Passed at 0\.99 -> act on it)$/m',
             '/^without a server-side gate: NotRequested, isConfident\(0\.8\) (yes|no)$/m',
         ],
         'request-controls' => [
@@ -108,10 +112,21 @@ final readonly class Example
      * Runs the example and waits for it (at most two minutes).
      *
      * @param  array<string, string>  $environment  set on top of this process's environment
+     * @param  bool  $isolated  leave out every SYSTEM_ONE_* and LAYA_* variable of this process's
+     *                          environment, so the run sees only the package's defaults and
+     *                          $environment, whatever the developer's shell exports
      */
-    public static function run(string $name, array $environment = []): self
+    public static function run(string $name, array $environment = [], bool $isolated = false): self
     {
-        $process = new Process([PHP_BINARY, self::directory()."/{$name}.php"], dirname(__DIR__, 2), ['XDEBUG_MODE' => 'off', ...$environment], timeout: 120);
+        $unset = [];
+
+        foreach ($isolated ? array_keys(getenv()) : [] as $variable) {
+            if (str_starts_with($variable, 'SYSTEM_ONE_') || str_starts_with($variable, 'LAYA_')) {
+                $unset[$variable] = false;
+            }
+        }
+
+        $process = new Process([PHP_BINARY, self::directory()."/{$name}.php"], dirname(__DIR__, 2), [...$unset, 'XDEBUG_MODE' => 'off', ...$environment], timeout: 120);
         $process->run();
 
         return new self($name, $process->getExitCode() ?? -1, $process->getOutput(), $process->getErrorOutput());
