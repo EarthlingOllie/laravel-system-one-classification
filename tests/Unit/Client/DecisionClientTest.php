@@ -32,6 +32,16 @@ it('sends the encoded decision through the transport and decodes the answer', fu
         && $request->data() === (new SystemOneCodec)->encode($decision));
 });
 
+it('sends the model it was built with', function (): void {
+    $decision = Decision::about(Context::text('We will cancel.'))->ask(Question::yesNo('churn', 'Cancel?'));
+    $http = new Factory;
+    $http->fake(['*' => Factory::response(['answers' => ['churn' => ['type' => 'noul', 'noul' => 0.5]]])]);
+
+    (new DecisionClient(new HttpTransport($http, 'http://laya.test'), new SystemOneCodec, model: 'multilingual'))->decide($decision);
+
+    $http->assertSent(fn (Request $request): bool => $request->data() === (new SystemOneCodec)->encode($decision, 'multilingual'));
+});
+
 /** A clock that returns the given readings, one per call, and records how often it was read. */
 function steppedClock(float ...$readings): Clock
 {
