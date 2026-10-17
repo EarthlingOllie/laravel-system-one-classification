@@ -56,7 +56,9 @@ use function strlen;
 
 /**
  * Maps a Decision to the System One wire format (`POST /v1/systemone`, shared by laya-serve
- * and Jev) and a response back to a Result.
+ * and Jev) and a response back to a Result; a Decision asked about many contexts to the batch
+ * endpoint (`POST /v1/systemone/batch`) and its responses back to a ResultSet; and reads
+ * `GET /health`.
  *
  * Each question type has one arm in wire(), which gives both its request and its decoder.
  */
