@@ -250,7 +250,7 @@ $answer = $result->get($department);
 
 $answer->value;                          // Department::Billing
 $answer->answerConfidence;               // 0.93: the probability of that answer
-$answer->confidence->value;              // 0.64: the model's raw confidence
+$answer->confidence->value;              // 0.45: the model's raw confidence
 $answer->confidence->profile;            // 'laya': the model profile that produced it
 $answer->isConfident(0.8);               // answerConfidence >= 0.8
 $answer->probabilityOf(Department::Other);
@@ -448,6 +448,10 @@ Every exception the package throws implements `EarthlingOllie\SystemOneClassific
 | `MalformedResponse` | The response didn't match the protocol. `body` holds the raw response. |
 | `UnknownQuestion` | `Result::get()` was given a question the decision didn't ask. |
 | `InvalidProbability` | A threshold outside [0, 1], or a `verdict()` whose `no` is above its `yes`. |
+| `InvalidResultSetAccess` | A `ResultSet` was read at a position it doesn't have, or written to. |
+| `InvalidFakeAnswer` | A `FakeAnswer` no model could give, such as a choice confidence below 1/n, or an abstained answer on a decision with no minimum confidence. |
+| `UnscriptedQuestion` | A strict fake was asked a question it has no script for. |
+| `InvalidDistribution` | A `FakeAnswer` (or an answer you build yourself) names a case of another enum, or a distribution that doesn't cover its enum. |
 
 ## Testing with the fake
 
@@ -526,10 +530,10 @@ As with Laravel's other fakes, anything that resolved the interface before `fake
 
 ## Events
 
-Every decision dispatches an event, for metrics and alerting:
+Every decision a connection's client handles dispatches an event, for metrics and alerting:
 
 - **`DecisionMade`**: `connection`, `model` (the model asked for, or null when the server routes), `questionKeys`, `result`, `meta`, `latencyMs` (null for a cached answer), `cached`, and `context`.
-- **`DecisionFailed`**: `connection`, `model`, `questionKeys`, `exception` (a `SystemOneException`) and `context`. It is dispatched before the exception reaches you, for decisions refused before sending too.
+- **`DecisionFailed`**: `connection`, `model`, `questionKeys`, `exception` (a `SystemOneException`) and `context`. It is dispatched before the exception reaches you, for decisions refused before sending too. A connection that can't be built at all (`connection()` throws an `InvalidConfiguration`, such as a remote connection without a key) dispatches nothing: there is no client to report it.
 
 ```php
 use EarthlingOllie\SystemOneClassification\Laravel\Events\DecisionFailed;
@@ -579,7 +583,7 @@ Change any of them and the decision is sent again.
 **How it works:**
 
 - With the cache on, every decision first reads the server's `/health`. A cheap GET, it does no inference, and it means a new checkpoint revision never gets a stale answer.
-- An answer is stored only when the checkpoint that gave it has a revision, so a checkpoint loaded from a local path is never cached.
+- The cache is skipped, without a report, when `/health` lists no revisions or any loaded checkpoint has none, such as one loaded from a local path through `LAYA_EXTRA_MODELS`. Otherwise an answer is stored only when the checkpoint that gave it is one `/health` reported a revision for.
 - A cached answer has no latency (`meta->latencyMs` is null), and its `DecisionMade` has `cached` set to true.
 - A store that throws, a `/health` that fails, and an entry that won't decode are reported through Laravel's exception handler and skipped. They never fail a decision.
 - Batches share entries with single decisions: each context is keyed as `decide()` would key it, and only the misses are sent.
@@ -599,7 +603,7 @@ Checkpoints: english (revision 55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851)
 Device: cpu
 ```
 
-It exits 1 when the server is unreachable or unhealthy, and 2 for an unknown connection.
+It exits 1 when the server is unreachable or unhealthy, and 2 when the connection can't be used: an unknown name, a config it refuses, or a remote connection without a key.
 
 **`system-one:try`** asks questions about some text from the terminal and prints each answer and how the server routed it:
 

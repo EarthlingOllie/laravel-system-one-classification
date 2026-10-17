@@ -8,6 +8,7 @@ use EarthlingOllie\SystemOneClassification\Laravel\Commands\TryCommand;
 use EarthlingOllie\SystemOneClassification\Laravel\ConnectionResolver;
 use EarthlingOllie\SystemOneClassification\Laravel\Facades\SystemOne;
 use EarthlingOllie\SystemOneClassification\Laravel\Testing\SystemOneFake;
+use EarthlingOllie\SystemOneClassification\Tests\Support\ComposerManifest;
 use EarthlingOllie\SystemOneClassification\Tests\Support\Example;
 use EarthlingOllie\SystemOneClassification\Tests\Support\Readme;
 use Illuminate\Console\Command;
@@ -45,6 +46,13 @@ it('covers every topic issue #13 asks for, each under its own heading', function
 it('links every runnable example', function (string $name): void {
     expect(Readme::load()->text)->toContain("examples/{$name}.php");
 })->with(Example::names());
+
+it('checks every PHP snippet, those indented in a list too', function (): void {
+    $readme = Readme::load();
+
+    expect($readme->blocks('php'))->toHaveCount(substr_count($readme->text, '```php'))
+        ->and(implode("\n", $readme->blocks('php')))->toContain("if (\$result->get(\$urgency)->expected >= Urgency::High->value) {\n    // escalate\n}");
+});
 
 it('has PHP snippets that all parse', function (): void {
     $files = Readme::load()->phpFiles();
@@ -97,7 +105,15 @@ it('calls only static members the package classes have', function (): void {
     expect($checked)->toBeGreaterThan(10);
 });
 
+it('reads a fully qualified class in a static call as the class, so it is checked too', function (): void {
+    $php = '<?php \EarthlingOllie\SystemOneClassification\Domain\Question::multi("k", "?");';
+
+    expect(Readme::memberAccesses($php)['static'])->toBe([['class' => 'EarthlingOllie\SystemOneClassification\Domain\Question', 'member' => 'multi']]);
+});
+
 it('reaches only methods and properties the package has', function (): void {
+    // By name only: snippets are fragments with no types, so this catches a renamed or made-up
+    // member, not one used on the wrong class. The examples, which PHPStan checks, cover that.
     $known = [...Readme::publicMembers(), ...README_FOREIGN_MEMBERS];
 
     foreach (Readme::load()->phpFiles() as $php) {
@@ -114,6 +130,13 @@ it('defines the same enums as the runnable examples', function (string $enum): v
 
     expect(Readme::load()->blocks('php'))->toContain($expected);
 })->with(['Department', 'Urgency']);
+
+it('lists every exception the package throws in the Errors table', function (string $exception): void {
+    expect(Readme::load()->text)->toMatch('/^\| `'.$exception.'` \|/m');
+})->with(array_map(
+    static fn (string $path): string => basename($path, '.php'),
+    array_filter(glob(Readme::root().'/src/Exceptions/*.php') ?: [], static fn (string $path): bool => ! str_ends_with($path, '/SystemOneException.php')),
+));
 
 it('names only env vars that config/system-one.php or the Compose file reads', function (): void {
     $sources = file_get_contents(Readme::root().'/config/system-one.php')
@@ -156,15 +179,30 @@ it('names only artisan commands and options that exist', function (): void {
     }
 });
 
+it('names only options the commands have, in prose and in brackets too', function (): void {
+    $options = [];
+
+    foreach ([new InstallCommand, new HealthCommand, new TryCommand] as $command) {
+        $options = [...$options, ...array_keys($command->getDefinition()->getOptions())];
+    }
+
+    // Other tools' options the README uses: artisan's own, vendor:publish's, docker's.
+    $foreign = ['no-interaction', 'tag', 'wait', 'secret'];
+    preg_match_all('/(?<![\w-])--([a-z][a-z-]*)/', Readme::load()->text, $matches);
+
+    foreach (array_unique($matches[1]) as $option) {
+        expect(in_array($option, [...$options, ...$foreign], true))->toBeTrue("README names the option --{$option}, which no command has.");
+    }
+});
+
 it('names only composer scripts that exist', function (): void {
-    /** @var array{scripts: array<string, mixed>} $composer */
-    $composer = json_decode((string) file_get_contents(Readme::root().'/composer.json'), true, flags: JSON_THROW_ON_ERROR);
+    $scripts = ComposerManifest::read()['scripts'] ?? [];
     preg_match_all('/\bcomposer ([a-z]+(?::[a-z]+)?)\b/', Readme::load()->text, $matches);
     $builtIn = ['require', 'install', 'update', 'config'];
 
     foreach (array_unique($matches[1]) as $script) {
         if (! in_array($script, $builtIn, true)) {
-            expect($composer['scripts'])->toHaveKey($script, message: "README runs composer {$script}, which is not a script.");
+            expect($scripts)->toHaveKey($script, message: "README runs composer {$script}, which is not a script.");
         }
     }
 });

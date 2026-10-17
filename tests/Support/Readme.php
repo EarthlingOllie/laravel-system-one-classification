@@ -20,7 +20,9 @@ use function dirname;
 use function file_get_contents;
 use function in_array;
 use function is_array;
+use function ltrim;
 use function preg_match_all;
+use function preg_replace;
 use function sort;
 use function str_replace;
 use function str_starts_with;
@@ -50,15 +52,19 @@ final readonly class Readme
     }
 
     /**
-     * The README's fenced blocks in one language, in order.
+     * The README's fenced blocks in one language, in order. A fence indented inside a list item
+     * counts too, its content dedented by the fence's indent.
      *
      * @return list<string>
      */
     public function blocks(string $language): array
     {
-        preg_match_all('/^```'.$language.'\n(.*?)^```$/ms', $this->text, $matches, PREG_SET_ORDER);
+        preg_match_all('/^( *)```'.$language.'\n(.*?)^\1```$/ms', $this->text, $matches, PREG_SET_ORDER);
 
-        return array_map(static fn (array $match): string => $match[1] ?? '', $matches);
+        return array_map(
+            static fn (array $match): string => preg_replace('/^'.($match[1] ?? '').'/m', '', $match[2] ?? '') ?? '',
+            $matches,
+        );
     }
 
     /**
@@ -204,7 +210,7 @@ final readonly class Readme
             $class = $tokens[$i - 1] ?? null;
 
             if ($token[0] === T_DOUBLE_COLON && is_array($class) && in_array($class[0], [T_STRING, T_NAME_QUALIFIED, T_NAME_FULLY_QUALIFIED], true)) {
-                $static[] = ['class' => $class[1], 'member' => $next[1]];
+                $static[] = ['class' => ltrim($class[1], '\\'), 'member' => $next[1]];
             }
         }
 
