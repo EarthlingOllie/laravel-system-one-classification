@@ -92,10 +92,18 @@ it('refuses a model the profile does not accept, listing the ones it does', func
         ->toThrow(InvalidDecision::class, "The decision pins model 'someone/else', which the laya profile does not accept; use one of: ".implode(', ', LayaProfile::MODELS).'.');
 });
 
-it('refuses a model that differs from an accepted one only in case', function (string $model): void {
-    expect(fn () => (new SystemOneCodec(new LayaProfile))->encode(scoreOver(Urgency::class)->withModel($model)))
-        ->toThrow(InvalidDecision::class, "The decision pins model '{$model}'");
-})->with(['English', 'ENGLISH']);
+// E2E finding: laya-serve lowercases a model name before looking it up (router.canonical_name,
+// for built-in and registered names alike), so refusing 'English' was stricter than the server.
+it('accepts a Laya model in any case, as laya-serve does, and sends it as written', function (string $model): void {
+    $profile = new LayaProfile(extraModels: ['acme/laya-finetune']);
+
+    expect((new SystemOneCodec($profile))->encode(scoreOver(Urgency::class)->withModel($model))['model'])->toBe($model);
+})->with(['English', 'ENGLISH', 'Multi', 'Acme/Laya-Finetune']);
+
+it('matches a Jev model exactly, since nothing recorded says Jev folds case', function (): void {
+    expect(fn () => (new SystemOneCodec(new JevProfile(['jev-1'])))->encode(scoreOver(Urgency::class)->withModel('JEV-1')))
+        ->toThrow(InvalidDecision::class, "The decision pins model 'JEV-1', which the jev profile does not accept; use one of: jev-1.");
+});
 
 it('refuses every model on a profile that lists none, saying where to list them', function (): void {
     expect(fn () => (new SystemOneCodec(new JevProfile))->encode(scoreOver(Urgency::class)->withModel('jev-1')))

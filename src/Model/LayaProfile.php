@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace EarthlingOllie\SystemOneClassification\Model;
 
+use function array_map;
+use function in_array;
+use function strtolower;
+
 /**
  * Laya, as served by laya-serve (local Docker or hosted at laya-ai.com).
  *
@@ -50,5 +54,14 @@ final readonly class LayaProfile implements ModelProfile
     public function models(): array
     {
         return [...self::MODELS, ...$this->extraModels];
+    }
+
+    /**
+     * laya-serve lowercases a name before looking it up, for its own checkpoints and aliases and
+     * for the ones it was configured with alike (laya.router.canonical_name).
+     */
+    public function acceptsModel(string $model): bool
+    {
+        return in_array(strtolower($model), array_map(strtolower(...), $this->models()), true);
     }
 }

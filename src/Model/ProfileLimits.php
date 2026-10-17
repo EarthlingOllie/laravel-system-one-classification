@@ -10,7 +10,6 @@ use EarthlingOllie\SystemOneClassification\Domain\Question\ScoreQuestion;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidDecision;
 
 use function count;
-use function in_array;
 
 /**
  * Checks a decision against a model profile's limits, so a decision the model would refuse
@@ -27,7 +26,7 @@ final readonly class ProfileLimits
     {
         $model = $decision->model;
 
-        if ($model !== null && ! in_array($model, $profile->models(), true)) {
+        if ($model !== null && ! $profile->acceptsModel($model)) {
             throw InvalidDecision::unacceptedModel($model, $profile->name, $profile->models());
         }
 

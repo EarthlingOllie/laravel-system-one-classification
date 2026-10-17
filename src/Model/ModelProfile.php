@@ -24,9 +24,12 @@ interface ModelProfile
     public bool $requiresScoreDescriptions { get; }
 
     /**
-     * The `model` values a decision may pin with Decision::withModel().
+     * The `model` values a decision may pin with Decision::withModel(), as messages list them.
      *
      * @return list<string>
      */
     public function models(): array;
+
+    /** Whether the model would accept $model as written, matched the way its server matches. */
+    public function acceptsModel(string $model): bool;
 }

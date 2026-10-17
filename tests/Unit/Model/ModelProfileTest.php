@@ -47,3 +47,22 @@ it('cannot be changed after construction', function (ModelProfile $profile): voi
     'laya' => fn (): ModelProfile => new LayaProfile,
     'jev' => fn (): ModelProfile => new JevProfile,
 ]);
+
+it('accepts a model when laya-serve would: any case of a checkpoint, alias or extra model', function (): void {
+    $profile = new LayaProfile(extraModels: ['Acme/Finetune']);
+
+    expect($profile->acceptsModel('english'))->toBeTrue()
+        ->and($profile->acceptsModel('Typed_Decisions'))->toBeTrue()
+        ->and($profile->acceptsModel('acme/finetune'))->toBeTrue()
+        ->and($profile->acceptsModel('ACME/FINETUNE'))->toBeTrue()
+        ->and($profile->acceptsModel('someone/else'))->toBeFalse()
+        ->and($profile->acceptsModel('englis'))->toBeFalse();
+});
+
+it('accepts only the exact models a Jev connection lists', function (): void {
+    $profile = new JevProfile(['jev-1']);
+
+    expect($profile->acceptsModel('jev-1'))->toBeTrue()
+        ->and($profile->acceptsModel('Jev-1'))->toBeFalse()
+        ->and((new JevProfile)->acceptsModel('jev-1'))->toBeFalse();
+});

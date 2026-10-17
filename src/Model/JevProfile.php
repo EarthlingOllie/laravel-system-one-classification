@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace EarthlingOllie\SystemOneClassification\Model;
 
+use function in_array;
+
 /**
  * TypeSafe's hosted Jev API.
  *
@@ -35,5 +37,11 @@ final readonly class JevProfile implements ModelProfile
     public function models(): array
     {
         return $this->models;
+    }
+
+    /** Exactly as listed: nothing recorded says Jev folds case. */
+    public function acceptsModel(string $model): bool
+    {
+        return in_array($model, $this->models, true);
     }
 }
