@@ -21,12 +21,11 @@ use EarthlingOllie\SystemOneClassification\Transport\Transport;
 use function array_column;
 use function array_is_list;
 use function array_key_exists;
+use function array_keys;
 use function array_map;
-use function array_values;
 use function count;
 use function hash;
 use function in_array;
-use function ksort;
 use function serialize;
 
 /** Sends decisions to one host and returns typed results. One client per connection. */
@@ -170,7 +169,7 @@ final readonly class DecisionClient implements Decider
 
     /**
      * @param  list<Context>  $contexts  as encodeBatches() accepted them
-     * @return array{ResultSet, array<int, bool>} the results, and for each position whether it came from the cache
+     * @return array{ResultSet, list<bool>} the results, and for each position whether it came from the cache
      *
      * @throws SystemOneException
      */
@@ -182,40 +181,44 @@ final readonly class DecisionClient implements Decider
             return [$this->sendBatches($decision, $this->codec->encodeBatches($decision, $contexts, $this->model))[0], []];
         }
 
-        $results = [];
-        $cached = [];
+        $hits = [];
         $missing = [];
 
-        foreach ($contexts as $position => $context) {
+        foreach ($contexts as $context) {
             $asked = $decision->withContext($context);
             $key = self::key($revisions, $this->codec->encode($asked, $this->model));
             $hit = $this->hit($cache, $asked, $key);
-            $cached[$position] = $hit !== null;
+            $hits[] = $hit;
 
             if ($hit === null) {
-                $missing[] = ['index' => count($missing), 'position' => $position, 'context' => $context, 'key' => $key];
-            } else {
-                $results[$position] = $hit;
+                $missing[] = ['context' => $context, 'key' => $key];
             }
         }
 
-        $usage = new Usage(0, 0);
+        // Nothing sent, no tokens used.
+        $sent = new ResultSet([], new Usage(0, 0));
 
         if ($missing !== []) {
             [$sent, $entries] = $this->sendBatches($decision, $this->codec->encodeBatches($decision, array_column($missing, 'context'), $this->model));
-            $usage = $sent->usage;
 
             // decodeBatch() checked there is one result, and so one entry, per context sent.
-            array_map(function (array $miss, Response $entry) use (&$results, $sent, $cache, $revisions): void {
-                $result = $sent[$miss['index']];
-                $results[$miss['position']] = $result;
-                $this->store($cache, $revisions, $miss['key'], $result, $entry);
-            }, $missing, $entries);
+            array_map(
+                fn (array $miss, Response $entry, int $index) => $this->store($cache, $revisions, $miss['key'], $sent[$index], $entry),
+                $missing,
+                $entries,
+                array_keys($missing),
+            );
         }
 
-        ksort($results);
+        // The misses' results come back in the order they were sent: the order of the contexts.
+        $results = [];
+        $next = 0;
 
-        return [new ResultSet(array_values($results), $usage), $cached];
+        foreach ($hits as $hit) {
+            $results[] = $hit ?? $sent[$next++];
+        }
+
+        return [new ResultSet($results, $sent->usage), array_map(static fn (?Result $hit): bool => $hit !== null, $hits)];
     }
 
     /**

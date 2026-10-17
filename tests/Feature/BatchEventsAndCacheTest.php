@@ -11,6 +11,7 @@ use EarthlingOllie\SystemOneClassification\Laravel\Events\DecisionFailed;
 use EarthlingOllie\SystemOneClassification\Laravel\Events\DecisionMade;
 use EarthlingOllie\SystemOneClassification\Laravel\Facades\SystemOne;
 use EarthlingOllie\SystemOneClassification\Result\Result;
+use EarthlingOllie\SystemOneClassification\Result\Usage;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Exceptions;
@@ -33,7 +34,7 @@ function churnIn(Result $result): float
 
 /**
  * Fakes laya-serve: /health reports the revision, and every state, single or batched, gets a
- * new probability (0.1, 0.2, ...) and routes to $checkpoint.
+ * new probability (0.01, 0.02, ...) and routes to $checkpoint.
  *
  * @param  array<string, ?string>  $revisions
  * @return ArrayObject<int, mixed> the states sent, in order
@@ -53,7 +54,7 @@ function fakeBatchServer(string $checkpoint = 'english', ?Closure $override = nu
         $answer = static function (mixed $state) use ($sent, $checkpoint): array {
             $sent->append($state);
 
-            return ['answers' => ['churn' => ['type' => 'noul', 'noul' => count($sent) / 10]], 'routing' => ['model' => $checkpoint]];
+            return ['answers' => ['churn' => ['type' => 'noul', 'noul' => count($sent) / 100]], 'routing' => ['model' => $checkpoint]];
         };
 
         if (str_ends_with($request->url(), '/batch')) {
@@ -188,4 +189,28 @@ it('keeps the API key and, by default, the contexts out of every batch event', f
         expect(serialize($event).var_export(json_decode((string) json_encode($event), true), true))->not->toContain('sk-batch-event-secret')
             ->and($event->context)->toBeNull();
     }
+});
+
+it('stores the answers of every request of a batch that spans several, each under its own context', function (): void {
+    config(['system-one.cache' => ['enabled' => true, 'store' => 'array', 'ttl' => 60]]);
+    $sent = fakeBatchServer();
+    $contexts = array_map(static fn (int $n): Context => Context::text("ticket {$n}"), range(0, 64));
+
+    $first = SystemOne::decideMany($contexts, manyChurn());
+    $again = SystemOne::decideMany($contexts, manyChurn());
+
+    expect($sent)->toHaveCount(65)
+        ->and(churnIn($again[0]))->toBe(churnIn($first[0]))
+        ->and(churnIn($again[64]))->toBe(churnIn($first[64]))
+        ->and(churnIn($first[64]))->toBe(0.65);
+    Http::assertSentCount(1 + 2 + 1);
+});
+
+it('reports no tokens for a batch answered from the cache alone', function (): void {
+    config(['system-one.cache' => ['enabled' => true, 'store' => 'array', 'ttl' => 60]]);
+    fakeBatchServer();
+
+    SystemOne::decideMany([Context::text('a')], manyChurn());
+
+    expect(SystemOne::decideMany([Context::text('a')], manyChurn())->usage)->toEqual(new Usage(0, 0));
 });

@@ -40,7 +40,6 @@ use function array_filter;
 use function array_is_list;
 use function array_keys;
 use function array_map;
-use function array_values;
 use function count;
 use function get_object_vars;
 use function implode;
@@ -293,10 +292,13 @@ final readonly class SystemOneCodec
         $root = json_decode($response->body);
         $results = $root instanceof stdClass ? ($root->results ?? null) : null;
 
-        return array_map(
-            static fn (mixed $entry): Response => new Response($response->status, json_encode($entry, JSON_THROW_ON_ERROR)),
-            is_array($results) ? array_values($results) : [],
-        );
+        $entries = [];
+
+        foreach (is_array($results) ? $results : [] as $entry) {
+            $entries[] = new Response($response->status, json_encode($entry, JSON_THROW_ON_ERROR));
+        }
+
+        return $entries;
     }
 
     /**
