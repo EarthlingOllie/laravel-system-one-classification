@@ -248,7 +248,7 @@ it('raises HostUnavailable for a 5xx only after the configured retries, backing 
     Http::fake(['*' => Http::response(['detail' => 'server busy'], 503)]);
 
     expect(fn () => SystemOne::connection('jev')->decide(namedDecision()))
-        ->toThrow(HostUnavailable::class, 'The model server is unavailable (HTTP 503): server busy');
+        ->toThrow(HostUnavailable::class, 'The model server is unavailable (HTTP 503 after 4 attempts): server busy');
 
     Http::assertSentCount(4);
     Sleep::assertSequence([Sleep::usleep(100_000), Sleep::usleep(200_000), Sleep::usleep(400_000)]);

@@ -132,7 +132,7 @@ it('masks the API key and URL secrets in the body of an error response', functio
 
     expect((new HttpTransport($http, 'http://u:pw@laya.test', 'sk-bearer'))->post('/v1/systemone', []))
         ->toEqual(new Response($status, '{"detail":"key *** is not valid for http://***@laya.test/?sig=***"}'));
-})->with([199, 301, 401, 403, 422, 500, 503]);
+})->with([199, 300, 301, 401, 403, 422, 500, 503]);
 
 it('passes a successful body through unchanged', function (int $status): void {
     $body = '{"answers":{"x":{"type":"noul","noul":0.5}},"note":"sk-bearer token=abc"}';
@@ -180,7 +180,7 @@ it('tries a 5xx again after each backoff delay, and returns the last response on
 
     $response = (new HttpTransport($http, 'http://laya.test', retry: new RetryPolicy(2, 100), sleeper: $sleeper))->post('/v1/systemone', ['state' => 'x']);
 
-    expect($response)->toEqual(new Response($status, '{"detail":"three"}'))
+    expect($response)->toEqual(new Response($status, '{"detail":"three"}', attempts: 3))
         ->and($sleeper->waits())->toBe([100_000, 200_000]);
     $http->assertSentCount(3);
     $http->assertSent(fn (Request $request): bool => $request->body() === '{"state":"x"}');
@@ -196,7 +196,7 @@ it('returns the first answer that is not a 5xx, without waiting again', function
 
     $response = (new HttpTransport($http, 'http://laya.test', retry: new RetryPolicy(5, 40), sleeper: $sleeper))->post('/v1/systemone', []);
 
-    expect($response)->toEqual(new Response($status, '{"detail":"later"}'))
+    expect($response)->toEqual(new Response($status, '{"detail":"later"}', attempts: 2))
         ->and($sleeper->waits())->toBe([40_000]);
     $http->assertSentCount(2);
 })->with([200, 401, 422, 499]);
@@ -220,7 +220,7 @@ it('tries again when the host cannot be reached, and answers with the first resp
 
     $response = (new HttpTransport($http, 'http://laya.test', retry: new RetryPolicy(1, 75), sleeper: $sleeper))->post('/v1/systemone', []);
 
-    expect($response)->toEqual(new Response(200, '{"answers":{}}'))
+    expect($response)->toEqual(new Response(200, '{"answers":{}}', attempts: 2))
         ->and($sleeper->waits())->toBe([75_000]);
 });
 
@@ -250,7 +250,7 @@ it('gives the last outcome when failed connections and 5xx answers alternate', f
     $http->fake(['*' => $http->sequence()->pushFailedConnection('timed out')->push('{"detail":"inference failed"}', 500)]);
 
     expect((new HttpTransport($http, 'http://laya.test', retry: new RetryPolicy(1, 1), sleeper: $sleeper))->post('/v1/systemone', []))
-        ->toEqual(new Response(500, '{"detail":"inference failed"}'))
+        ->toEqual(new Response(500, '{"detail":"inference failed"}', attempts: 2))
         ->and($sleeper->waits())->toBe([1_000, 1_000]);
 });
 
@@ -273,4 +273,29 @@ it('sends the same bearer token with every attempt', function (): void {
     $headers = $http->recorded()->map(fn (array $sent): array => $sent[0]->header('Authorization'))->all();
 
     expect($headers)->toBe([['Bearer secret-key'], ['Bearer secret-key'], ['Bearer secret-key']]);
+});
+
+it('waits as long as a 5xx asks with Retry-After when that is longer than the backoff', function (string $retryAfter, int $wait): void {
+    $http = new Factory;
+    $http->fake(['*' => $http->sequence()->push('{"detail":"server busy"}', 503, ['Retry-After' => $retryAfter])->push('{}', 200)]);
+    $sleeper = new RecordingSleeper;
+
+    (new HttpTransport($http, 'http://laya.test', retry: new RetryPolicy(1, 200), sleeper: $sleeper))->post('/v1/systemone', []);
+
+    expect($sleeper->waits())->toBe([$wait]);
+})->with([
+    'longer: as asked' => ['1', 1_000_000],
+    'shorter: the backoff' => ['0', 200_000],
+    'more than the cap: the cap' => ['3600', RetryPolicy::MAX_DELAY_MILLISECONDS * 1000],
+    'padded' => [' 2 ', 2_000_000],
+    'an HTTP date: the backoff' => ['Wed, 21 Oct 2026 07:28:00 GMT', 200_000],
+    'negative: the backoff' => ['-5', 200_000],
+    'a fraction: the backoff' => ['1.5', 200_000],
+]);
+
+it('reads no Retry-After from a 5xx without one', function (): void {
+    $http = new Factory;
+    $http->fake(['*' => Factory::response('{}', 503)]);
+
+    expect((new HttpTransport($http, 'http://laya.test'))->post('/v1/systemone', []))->toEqual(new Response(503, '{}'));
 });

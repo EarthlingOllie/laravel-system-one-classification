@@ -10,7 +10,11 @@ use Illuminate\Http\Client\Factory;
 use SensitiveParameter;
 use SensitiveParameterValue;
 
+use function count;
+use function filter_var;
 use function is_string;
+use function max;
+use function min;
 
 /**
  * POSTs JSON to one System One host (laya-serve, hosted Laya or Jev) with Laravel's HTTP client.
@@ -44,30 +48,42 @@ final readonly class HttpTransport implements Transport
     {
         $delays = $this->retry->delays();
 
-        for ($attempt = 1; ; $attempt++) {
-            $outcome = $this->send($path, $body);
-            $delay = $delays[$attempt - 1] ?? null;
+        foreach ($delays as $retry => $delay) {
+            $outcome = $this->send($path, $body, $retry + 1);
 
-            if ($outcome instanceof Response && ($outcome->status < 500 || $delay === null)) {
+            if ($outcome instanceof Response && $outcome->status < 500) {
                 return $outcome;
             }
 
-            if ($outcome instanceof ConnectionException && $delay === null) {
-                $redactor = $this->redactor();
+            $wait = $delay;
 
-                throw HostUnavailable::unreachable($redactor->redact($this->baseUrl), $redactor->redact($outcome->getMessage()), $attempt);
+            if ($outcome instanceof Response && $outcome->retryAfter !== null) {
+                // A busy server's Retry-After wins over a shorter backoff, within the same cap.
+                $wait = min(max($delay, $outcome->retryAfter * 1000), RetryPolicy::MAX_DELAY_MILLISECONDS);
             }
 
-            $this->sleeper->sleep($delay * 1000);
+            $this->sleeper->sleep($wait * 1000);
         }
+
+        $attempts = count($delays) + 1;
+        $outcome = $this->send($path, $body, $attempts);
+
+        if ($outcome instanceof Response) {
+            return $outcome;
+        }
+
+        $redactor = $this->redactor();
+
+        throw HostUnavailable::unreachable($redactor->redact($this->baseUrl), $redactor->redact($outcome->getMessage()), $attempts);
     }
 
     /**
      * One attempt: the response, whatever its status, or why nothing came back.
      *
      * @param  array<string, mixed>  $body
+     * @param  int  $attempt  which attempt this is, the first being 1
      */
-    private function send(string $path, array $body): Response|ConnectionException
+    private function send(string $path, array $body, int $attempt): Response|ConnectionException
     {
         $request = $this->http->createPendingRequest()
             ->baseUrl($this->baseUrl)
@@ -90,7 +106,15 @@ final readonly class HttpTransport implements Transport
         $status = $response->status();
         $successful = $status >= 200 && $status < 300;
 
-        return new Response($status, $successful ? $response->body() : $this->redactor()->redactBody($response->body()));
+        // Only the delay-seconds form; a negative one is outwaited by any backoff anyway.
+        $retryAfter = filter_var($response->header('Retry-After'), FILTER_VALIDATE_INT);
+
+        return new Response(
+            $status,
+            $successful ? $response->body() : $this->redactor()->redactBody($response->body()),
+            $attempt,
+            $retryAfter === false ? null : $retryAfter,
+        );
     }
 
     private function apiKey(): ?string

@@ -143,6 +143,14 @@ it('keeps the 5xx status and detail', function (): void {
     }
 });
 
+it('names the attempts of a 5xx that persisted through retries', function (int $attempts, string $message): void {
+    expect(fn () => (new SystemOneCodec)->decode(churnDecision(), new Response(503, '{"detail":"server busy"}', attempts: $attempts)))
+        ->toThrow(HostUnavailable::class, $message);
+})->with([
+    [1, 'The model server is unavailable (HTTP 503): server busy'],
+    [2, 'The model server is unavailable (HTTP 503 after 2 attempts): server busy'],
+]);
+
 it('reports a 5xx without a JSON detail by its status alone', function (string $body): void {
     (new SystemOneCodec)->decode(churnDecision(), new Response(502, $body));
 })->with(['<html>Bad Gateway</html>', '{"detail": 7}', '[]'])

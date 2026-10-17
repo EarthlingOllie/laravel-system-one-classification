@@ -117,7 +117,7 @@ final readonly class SystemOneCodec
         $status = $response->status;
 
         if ($status >= 500) {
-            throw HostUnavailable::serverError($status, ErrorDetail::of($response->body));
+            throw HostUnavailable::serverError($status, ErrorDetail::of($response->body), $response->attempts);
         }
 
         if ($status >= 400) {
