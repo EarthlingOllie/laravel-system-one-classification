@@ -95,15 +95,25 @@ $connection = static function (Request $request): ?string {
 };
 
 /*
- * The decision about $text, pinned to $model when one is given. A numeric ?min_confidence=
- * turns on the abstention gate (withMinConfidence()); anything else sends none.
+ * The decision about $text, pinned to $model when one is given, with #7's request controls from
+ * the query string: a numeric ?min_confidence= turns on the abstention gate, a non-blank ?lang=
+ * and ?lang_guess= name the language, and a whole-number ?max_len= and ?head_max_len= set the
+ * token budgets. Anything else sends none; a value the decision refuses (?max_len=0) is the
+ * package's InvalidDecision.
  */
 $decision = static function (string $text, ?string $model, Request $request): Decision {
     $decision = Decision::about(Context::text($text));
     $decision = $model === null ? $decision : $decision->withModel($model);
-    $minConfidence = $request->query('min_confidence');
+    $query = static fn (string $name): ?string => is_string($value = $request->query($name)) && trim($value) !== '' ? $value : null;
+    $minConfidence = $query('min_confidence');
+    $decision = $minConfidence !== null && is_numeric($minConfidence) ? $decision->withMinConfidence((float) $minConfidence) : $decision;
+    $decision = ($language = $query('lang')) !== null ? $decision->withLanguage($language) : $decision;
+    $decision = ($hint = $query('lang_guess')) !== null ? $decision->withLanguageHint($hint) : $decision;
 
-    return is_string($minConfidence) && is_numeric($minConfidence) ? $decision->withMinConfidence((float) $minConfidence) : $decision;
+    $tokens = static fn (string $name): ?int => filter_var($query($name), FILTER_VALIDATE_INT, FILTER_NULL_ON_FAILURE);
+    $decision = ($maxLength = $tokens('max_len')) !== null ? $decision->withMaxLength($maxLength) : $decision;
+
+    return ($headMaxLength = $tokens('head_max_len')) !== null ? $decision->withHeadMaxLength($headMaxLength) : $decision;
 };
 
 /*

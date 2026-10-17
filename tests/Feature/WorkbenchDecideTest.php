@@ -233,3 +233,42 @@ it('turns ?cache=1 and ?include_context=1 off again for the next request', funct
         ->and(config('system-one.cache.enabled'))->toBeFalse()
         ->and(config('system-one.events.include_context'))->toBeFalse();
 });
+
+// #7's request controls from the query string, on every question page and /decide-many.
+it('sends ?lang=, ?lang_guess=, ?max_len= and ?head_max_len= as the request controls', function (string $page): void {
+    Http::fake(['*' => function (Request $request) {
+        $answer = ['type' => 'noul', 'noul' => 0.5];
+
+        return str_ends_with($request->url(), '/batch')
+            ? Http::response(['results' => array_map(static fn (): array => ['answers' => ['churn' => $answer]], (array) $request['states'])])
+            : Http::response(['answers' => [
+                'churn' => $answer,
+                'department' => ['type' => 'choice', 'choice' => 'billing', 'confidence' => 0.1, 'probabilities' => ['billing' => 0.8, 'technical' => 0.1, 'other' => 0.1]],
+                'urgency' => ['type' => 'score', 'score' => 0.0, 'confidence' => 0.1, 'legend' => ['can wait', 'soon', 'today', 'blocking'], 'probabilities' => ['0' => 1.0, '1' => 0.0, '2' => 0.0, '3' => 0.0]],
+            ]]);
+    }]);
+
+    $this->get("{$page}?lang=de&lang_guess=de_AT&max_len=64&head_max_len=16")->assertOk();
+
+    Http::assertSent(fn (Request $request): bool => $request['lang'] === 'de'
+        && $request['lang_guess'] === 'de_AT'
+        && $request['max_len'] === 64
+        && $request['head_max_len'] === 16);
+})->with(['/decide', '/choose', '/score', '/decide-many']);
+
+it('sends no control the query string leaves out or leaves blank', function (): void {
+    Http::fake(['*' => Http::response(['answers' => ['churn' => ['type' => 'noul', 'noul' => 0.5]]])]);
+
+    // Like ?min_confidence=high, a length that is not a whole number sends none.
+    $this->get('/decide?lang=%20&max_len=&head_max_len=ten')->assertOk();
+
+    Http::assertSent(fn (Request $request): bool => array_keys($request->data()) === ['state', 'questions']);
+});
+
+it('renders a control the query string makes invalid as the package error with a 422 status', function (string $query): void {
+    Http::fake();
+
+    $this->get("/decide?{$query}")->assertStatus(422)->assertSee('data-error="InvalidDecision"', escape: false);
+
+    Http::assertNothingSent();
+})->with(['max_len=0', 'head_max_len=-3']);
