@@ -17,6 +17,7 @@ use EarthlingOllie\SystemOneClassification\Exceptions\MalformedResponse;
 use EarthlingOllie\SystemOneClassification\Exceptions\RejectedByModel;
 use EarthlingOllie\SystemOneClassification\Model\LayaProfile;
 use EarthlingOllie\SystemOneClassification\Model\ModelProfile;
+use EarthlingOllie\SystemOneClassification\Model\ProfileLimits;
 use EarthlingOllie\SystemOneClassification\Result\Answer\Answer;
 use EarthlingOllie\SystemOneClassification\Result\Answer\ChoiceAnswer;
 use EarthlingOllie\SystemOneClassification\Result\Answer\ScoreAnswer;
@@ -53,18 +54,21 @@ final readonly class SystemOneCodec
     public const string PATH = '/v1/systemone';
 
     /**
-     * @param  ModelProfile  $profile  the model behind the connection; every decoded Confidence
-     *                                 is tagged with its name
+     * @param  ModelProfile  $profile  the model behind the connection: encode() checks every
+     *                                 decision against its limits, and every decoded
+     *                                 Confidence is tagged with its name
      */
     public function __construct(private ModelProfile $profile = new LayaProfile) {}
 
     /**
      * @return array{state: string, questions: array<string, array<string, mixed>>} choice criteria are a stdClass, so they always encode as a JSON object
      *
-     * @throws InvalidDecision
+     * @throws InvalidDecision when the decision cannot be sent, or breaks a limit of the profile
      */
     public function encode(Decision $decision): array
     {
+        ProfileLimits::check($this->profile, $decision);
+
         $questions = [];
 
         foreach ($decision->questions() as $question) {

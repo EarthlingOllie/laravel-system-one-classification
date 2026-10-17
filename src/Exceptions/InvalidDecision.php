@@ -107,6 +107,11 @@ final class InvalidDecision extends InvalidArgumentException implements SystemOn
         return new self('The decision asks no questions; add one with ask().');
     }
 
+    public static function tooManyOptions(string $key, int $options, int $limit, string $profile): self
+    {
+        return new self("Choice question '{$key}' has {$options} options, more than the {$limit} the {$profile} profile allows per choice question.");
+    }
+
     public static function unsupportedQuestion(object $question): self
     {
         return new self('The wire format has no question type for '.get_debug_type($question).'.');
