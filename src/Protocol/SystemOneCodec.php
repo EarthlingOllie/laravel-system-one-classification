@@ -61,7 +61,7 @@ final readonly class SystemOneCodec
         $questions = [];
 
         foreach ($decision->questions() as $question) {
-            $questions[$question->key] = $this->wire($question)['request'];
+            $questions[$question->key] = $this->wire($question)['request']();
         }
 
         if ($questions === []) {
@@ -123,10 +123,11 @@ final readonly class SystemOneCodec
      * The one dispatch on question type: what to send for a question and how to read its answer.
      *
      * encode() and decode() both go through here, so a type the codec knows has both halves and
-     * any other type is refused by encode(), before DecisionClient sends anything.
+     * any other type is refused by encode(), before DecisionClient sends anything. Both halves
+     * are closures, so each caller builds only the one it uses.
      *
      * @param  QuestionHandle<Answer>  $question
-     * @return array{request: array<string, mixed>, decode: Closure(array<mixed>, string): Answer}
+     * @return array{request: Closure(): array<string, mixed>, decode: Closure(array<mixed>, string): Answer}
      *
      * @throws InvalidDecision
      */
@@ -134,7 +135,7 @@ final readonly class SystemOneCodec
     {
         return match (true) {
             $question instanceof ChoiceQuestion => [
-                'request' => [
+                'request' => static fn (): array => [
                     'type' => 'choice',
                     'instructions' => $question->instructions,
                     'criteria' => self::criteria($question),
@@ -142,7 +143,7 @@ final readonly class SystemOneCodec
                 'decode' => fn (array $answer, string $body): ChoiceAnswer => $this->decodeChoice($question, $answer, $body),
             ],
             $question instanceof YesNoQuestion => [
-                'request' => ['type' => 'noul', 'instructions' => $question->instructions],
+                'request' => static fn (): array => ['type' => 'noul', 'instructions' => $question->instructions],
                 'decode' => static fn (array $answer, string $body): YesNoAnswer => self::decodeYesNo($question->key, $answer, $body),
             ],
             default => throw InvalidDecision::unsupportedQuestion($question),
