@@ -7,6 +7,7 @@ namespace EarthlingOllie\SystemOneClassification\Exceptions;
 use BackedEnum;
 use Error;
 use InvalidArgumentException;
+use JsonException;
 
 use function get_debug_type;
 use function implode;
@@ -128,6 +129,16 @@ final class InvalidDecision extends InvalidArgumentException implements SystemOn
         }
 
         return new self("The decision pins model '{$model}', which the {$profile} profile does not accept; use one of: ".implode(', ', $accepted).'.');
+    }
+
+    public static function contextNotUtf8(JsonException $previous): self
+    {
+        return new self('The context text is not valid UTF-8, which JSON requires.', previous: $previous);
+    }
+
+    public static function questionNotUtf8(string $key, JsonException $previous): self
+    {
+        return new self("Question '{$key}' has text that is not valid UTF-8, which JSON requires.", previous: $previous);
     }
 
     public static function unsupportedQuestion(object $question): self

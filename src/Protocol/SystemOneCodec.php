@@ -26,6 +26,7 @@ use EarthlingOllie\SystemOneClassification\Result\Confidence;
 use EarthlingOllie\SystemOneClassification\Result\Distribution;
 use EarthlingOllie\SystemOneClassification\Result\Result;
 use EarthlingOllie\SystemOneClassification\Transport\Response;
+use JsonException;
 use stdClass;
 
 use function array_column;
@@ -68,11 +69,23 @@ final readonly class SystemOneCodec
     public function encode(Decision $decision): array
     {
         ProfileLimits::check($this->profile, $decision);
+        $error = self::jsonError($decision->context->text);
+
+        if ($error !== null) {
+            throw InvalidDecision::contextNotUtf8($error);
+        }
 
         $questions = [];
 
         foreach ($decision->questions() as $question) {
-            $questions[$question->key] = $this->wire($question)['request']();
+            $request = $this->wire($question)['request']();
+            $error = self::jsonError($request);
+
+            if ($error !== null) {
+                throw InvalidDecision::questionNotUtf8($question->key, $error);
+            }
+
+            $questions[$question->key] = $request;
         }
 
         if ($questions === []) {
@@ -134,6 +147,25 @@ final readonly class SystemOneCodec
         }
 
         return new Result($decoded);
+    }
+
+    /**
+     * JSON carries only UTF-8, so text that is not would fail in the HTTP client's own
+     * json_encode(), with an exception that is not the package's. Every piece of a request is
+     * a string, a list or object of strings, or null, so invalid UTF-8 is the only way it can
+     * fail to encode.
+     *
+     * @return ?JsonException why the value cannot be encoded, or null when it can
+     */
+    private static function jsonError(mixed $value): ?JsonException
+    {
+        try {
+            json_encode($value, JSON_THROW_ON_ERROR);
+        } catch (JsonException $e) {
+            return $e;
+        }
+
+        return null;
     }
 
     /**
