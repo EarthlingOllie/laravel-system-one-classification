@@ -164,6 +164,58 @@ it('joins a sail network declared with no settings', function (): void {
     expect(parsedYaml($updated)['services']['laya']['networks'])->toBe(['sail']);
 });
 
+it('indents the new entries like the section it adds them to', function (): void {
+    $compose = "x-common: &common\n  restart: always\nservices:\n\n# The app.\n    app:\n        <<: *common\n        image: x\nvolumes:\n  # Data.\n  data:\n    driver: local\n";
+
+    $updated = (new ComposeFiles(packageDir()))->addToSail($compose, '/app');
+    assert($updated !== null);
+
+    expect($updated)->toContain("services:\n    laya:\n        image: ")
+        ->and($updated)->toContain("volumes:\n  sail-laya:\n    driver: local\n  # Data.\n")
+        ->and(array_keys(parsedYaml($updated)['services']))->toBe(['laya', 'app'])
+        ->and(array_keys(parsedYaml($updated)['volumes']))->toBe(['sail-laya', 'data']);
+});
+
+it('indents a new volume like the services when the volumes section is empty', function (): void {
+    $updated = (new ComposeFiles(packageDir()))->addToSail("x-a:\n  b: c\nservices:\n    app:\n        image: x\nvolumes:\n", '/app');
+
+    expect($updated)->toEndWith("volumes:\n    sail-laya:\n        driver: local\n");
+});
+
+it('indents a new volume like the services when the empty volumes section is not last', function (): void {
+    $updated = (new ComposeFiles(packageDir()))->addToSail("services:\n    app:\n        image: x\nvolumes:\nnetworks:\n  sail:\n", '/app');
+
+    expect($updated)->toContain("volumes:\n    sail-laya:\n        driver: local\nnetworks:\n");
+});
+
+it('keeps the CRLF line endings of a Windows file', function (): void {
+    $original = str_replace("\n", "\r\n", sailFixture('docker-compose.yml'));
+
+    $updated = (new ComposeFiles(packageDir()))->addToSail($original, '/app');
+    assert($updated !== null);
+
+    expect(parsedYaml($updated)['services'])->toHaveKeys(['laya', 'laravel.test', 'mysql'])
+        ->and(parsedYaml($updated)['volumes'])->toHaveKeys(['sail-laya', 'sail-mysql'])
+        ->and(preg_match('/(?<!\r)\n/', $updated))->toBe(0)
+        ->and(isSubsequence(explode("\r\n", $original), explode("\r\n", $updated)))->toBeTrue();
+});
+
+it('appends a volumes section with CRLF line endings to a Windows file', function (): void {
+    $updated = (new ComposeFiles(packageDir()))->addToSail("services:\r\n    app:\r\n        image: x\r\n", '/app');
+
+    expect($updated)->toEndWith("        image: x\r\nvolumes:\r\n    sail-laya:\r\n        driver: local\r\n");
+});
+
+it('accepts the Compose merge tags such as !reset and !override', function (): void {
+    $compose = "services:\n    app:\n        image: x\n        ports: !reset []\n        environment: !override\n            A: b\n";
+
+    $updated = (new ComposeFiles(packageDir()))->addToSail($compose, '/app');
+    assert($updated !== null);
+
+    expect($updated)->toStartWith("services:\n    laya:\n")
+        ->and($updated)->toContain("        ports: !reset []\n        environment: !override\n");
+});
+
 it('changes nothing when the laya service and its volume are already there', function (): void {
     $files = new ComposeFiles(packageDir());
     $once = $files->addToSail(sailFixture('docker-compose.yml'), '/app');

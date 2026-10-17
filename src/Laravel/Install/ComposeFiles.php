@@ -8,6 +8,7 @@ use EarthlingOllie\SystemOneClassification\Exceptions\InvalidConfiguration;
 use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
 
+use function array_filter;
 use function array_is_list;
 use function array_key_exists;
 use function array_map;
@@ -19,12 +20,13 @@ use function file_get_contents;
 use function implode;
 use function is_array;
 use function preg_match;
-use function preg_match_all;
 use function rtrim;
+use function str_contains;
 use function str_repeat;
 use function str_replace;
 use function str_starts_with;
 use function strlen;
+use function strspn;
 use function substr;
 use function substr_count;
 
@@ -102,19 +104,34 @@ final readonly class ComposeFiles
             throw InvalidConfiguration::unusableCompose($file, "'volumes' is not a map");
         }
 
-        $updated = $compose;
+        // Keep a Windows file's CRLF endings: split and join on what the file uses.
+        $eol = str_contains($compose, "\r\n") ? "\r\n" : "\n";
+        $lines = explode($eol, $compose);
 
         // array_key_exists, not isset: a bare `laya:` / `sail-laya:` / `volumes:` / `sail:` key parses as null but is still there.
         if (! array_key_exists('laya', $services)) {
             $networks = $parsed['networks'] ?? null;
-            $updated = $this->insertUnder($updated, $file, 'services', ['laya' => $this->sailService(is_array($networks) && array_key_exists('sail', $networks), $appBasePath)]);
+            $at = self::sectionLine($lines, $file, 'services');
+            $service = $this->sailService(is_array($networks) && array_key_exists('sail', $networks), $appBasePath);
+            array_splice($lines, $at + 1, 0, self::block(['laya' => $service], self::indentUnder($lines, $at)));
         }
 
         if (! array_key_exists(self::SAIL_VOLUME, $volumes)) {
-            $updated = array_key_exists('volumes', $parsed)
-                ? $this->insertUnder($updated, $file, 'volumes', [self::SAIL_VOLUME => ['driver' => 'local']])
-                : rtrim($updated, "\n")."\nvolumes:\n".$this->block([self::SAIL_VOLUME => ['driver' => 'local']], self::indentOf($updated));
+            $volume = [self::SAIL_VOLUME => ['driver' => 'local']];
+
+            if (array_key_exists('volumes', $parsed)) {
+                $at = self::sectionLine($lines, $file, 'volumes');
+                // An empty `volumes:` shows no indentation of its own: follow the services'.
+                $indent = self::indentUnder($lines, $at);
+                $indent = $indent > 0 ? $indent : self::indentUnder($lines, self::sectionLine($lines, $file, 'services'));
+                array_splice($lines, $at + 1, 0, self::block($volume, $indent));
+            } else {
+                $indent = self::indentUnder($lines, self::sectionLine($lines, $file, 'services'));
+                $lines = [...explode($eol, rtrim(implode($eol, $lines), "\r\n")), 'volumes:', ...self::block($volume, $indent), ''];
+            }
         }
+
+        $updated = implode($eol, $lines);
 
         return $updated === $compose ? null : $updated;
     }
@@ -140,46 +157,56 @@ final readonly class ComposeFiles
     }
 
     /**
-     * Inserts $entries as the first children of the top-level block-style `$section:` line.
+     * The index of the top-level block-style `$section:` line, where new entries go right after.
      *
-     * @param  array<mixed>  $entries
+     * @param  list<string>  $lines
      *
      * @throws InvalidConfiguration when there is no such line
      */
-    private function insertUnder(string $compose, string $file, string $section, array $entries): string
+    private static function sectionLine(array $lines, string $file, string $section): int
     {
-        $lines = explode("\n", $compose);
-
         foreach ($lines as $i => $line) {
             if (preg_match('/^'.$section.':[ \t]*(?:#.*)?$/', $line) === 1) {
-                array_splice($lines, $i + 1, 0, explode("\n", rtrim($this->block($entries, self::indentOf($compose)), "\n")));
-
-                return implode("\n", $lines);
+                return $i;
             }
         }
 
         throw InvalidConfiguration::unusableCompose($file, "has no block-style '{$section}:' line to add to");
     }
 
-    /** @param array<mixed> $entries */
-    private function block(array $entries, int $indent): string
+    /**
+     * How far the entries of the section whose key is on line $at are indented: as far as its
+     * first line that is neither blank nor a comment, or 0 when the section has no entries.
+     *
+     * A block-style map of services always has an entry, so only `volumes:` can give 0.
+     *
+     * @param  list<string>  $lines
+     */
+    private static function indentUnder(array $lines, int $at): int
     {
-        $pad = str_repeat(' ', $indent);
-        $lines = explode("\n", rtrim(Yaml::dump($entries, PHP_INT_MAX, $indent), "\n"));
+        $entries = array_filter(
+            array_slice($lines, $at + 1),
+            static fn (string $line): bool => preg_match('/^[ \t]*(?:#.*)?$/', $line) !== 1,
+        );
 
-        return implode("\n", array_map(fn (string $line): string => $pad.$line, $lines))."\n";
+        // No entry is blank, so the leading spaces counted all belong to the first one.
+        return strspn(implode('', $entries), ' ');
     }
 
     /**
-     * The indentation of the file's first indented line that is not a comment.
+     * $entries as YAML lines, nested and indented by $indent spaces like the section they join.
      *
-     * Only called on a file with a block-style map of services, which always has one.
+     * @param  array<mixed>  $entries
+     * @return list<string>
      */
-    private static function indentOf(string $compose): int
+    private static function block(array $entries, int $indent): array
     {
-        preg_match_all('/^( +)[^ #\n]/m', $compose, $matches);
+        $pad = str_repeat(' ', $indent);
 
-        return strlen(implode('', array_slice($matches[1], 0, 1)));
+        return array_map(
+            static fn (string $line): string => $pad.$line,
+            explode("\n", rtrim(Yaml::dump($entries, PHP_INT_MAX, $indent), "\n")),
+        );
     }
 
     /** The package's docker/laya directory as an app at $appBasePath should name it. */
@@ -194,7 +221,8 @@ final readonly class ComposeFiles
     private function parse(string $yaml, string $what): mixed
     {
         try {
-            return Yaml::parse($yaml);
+            // Compose's merge tags (`!reset`, `!override`) are valid in an app's file.
+            return Yaml::parse($yaml, Yaml::PARSE_CUSTOM_TAGS);
         } catch (ParseException $exception) {
             throw InvalidConfiguration::unusableCompose($what, 'is not valid YAML: '.$exception->getMessage());
         }
