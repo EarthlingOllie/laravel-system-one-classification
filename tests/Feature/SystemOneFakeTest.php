@@ -400,3 +400,46 @@ it('refuses an abstained script for a decision that set no minimum confidence, w
         ->toThrow(InvalidFakeAnswer::class, "The answer for 'churn' is scripted as abstained, but the decision sets no minimum confidence (withMinConfidence()), so no server would abstain on it.");
     $fake->assertNothingDecided();
 });
+
+// #8's decideMany() under the fake: each context is one recorded decision.
+it('answers decideMany() with one result per context, in order, recording each as a decision', function (): void {
+    $churn = fakeChurn();
+    $fake = SystemOne::fake([FakeAnswer::yesNo($churn, 0.7)]);
+    $template = aboutTicket('the template')->ask($churn)->withMinConfidence(0.5);
+
+    $results = SystemOne::decideMany([Context::text('first'), Context::fields(['body' => 'second'])], $template);
+
+    expect($results)->toHaveCount(2)
+        ->and($results->usage)->toBeNull()
+        ->and($results[0]->get($churn)->probability)->toBe(0.7)
+        ->and($results[1]->get($churn)->abstention)->toBe(Abstention::Passed);
+    $fake->assertDecidedTimes(2);
+    $fake->assertDecided(fn (Decision $decision): bool => $decision->context->state === 'first' && $decision->minConfidence === 0.5);
+    $fake->assertDecided(fn (Decision $decision): bool => $decision->context->state === ['body' => 'second']);
+    expect(failureOf(fn () => $fake->assertDecided(fn (Decision $decision): bool => $decision->context->state === 'the template')))
+        ->toStartWith('No decision matching the callback was made (2 decisions were made).');
+});
+
+it('answers decideMany() on a named connection', function (): void {
+    config(['system-one.connections.jev' => ['url' => 'https://jev.test', 'profile' => 'jev']]);
+    $department = fakeDepartmentQuestion();
+    $fake = SystemOne::fake();
+
+    $results = SystemOne::connection('jev')->decideMany([Context::text('a'), Context::text('b')], aboutTicket()->ask($department));
+
+    expect($results[1]->get($department)->confidence->profile)->toBe('jev');
+    $fake->assertDecided(fn (Decision $decision, string $connection): bool => $connection === 'jev' && $decision->context->state === 'b');
+});
+
+it('refuses in decideMany() what the real client refuses, recording nothing', function (array $contexts, string $message): void {
+    $fake = SystemOne::fake();
+
+    expect(fn (): mixed => SystemOne::decideMany($contexts, aboutTicket()->ask(fakeChurn())))
+        ->toThrow(InvalidDecision::class, $message);
+    $fake->assertNothingDecided();
+})->with([
+    'no contexts' => [[], 'decideMany() needs at least one context.'],
+    'not a list' => [[1 => Context::text('a')], 'decideMany() takes the contexts as a list'],
+    'not a context' => [[Context::text('a'), 'b'], 'Context 1 of the batch is string, not a Context'],
+    'text that is not UTF-8' => [[Context::text('a'), Context::text("tw\xB1ce")], 'The context text is not valid UTF-8'],
+]);

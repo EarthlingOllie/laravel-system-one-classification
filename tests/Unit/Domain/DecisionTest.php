@@ -116,6 +116,36 @@ it('names the trimmed model for whitespace on either side', function (string $mo
         ->toThrow(InvalidDecision::class, "pin 'english'.");
 })->with(['english ', "\tenglish\n"]);
 
+it('returns a new decision about another context from withContext(), with the same questions', function (): void {
+    $churn = Question::yesNo('churn', 'Does the customer threaten to cancel?');
+    $original = Decision::about(Context::text('We were billed twice.'))->ask($churn);
+    $other = Context::text('The app crashes.');
+
+    $moved = $original->withContext($other);
+
+    expect($moved)->not->toBe($original)
+        ->and($moved->context)->toBe($other)
+        ->and($moved->questions())->toBe([$churn])
+        ->and($original->context->state)->toBe('We were billed twice.');
+});
+
+// #8 asks one decision about many contexts, so the copy must keep #6's model and #7's controls.
+it('keeps the pinned model and every request control in withContext()', function (): void {
+    $original = Decision::about(Context::text('We were billed twice.'))
+        ->ask(Question::yesNo('churn', 'Does the customer threaten to cancel?'))
+        ->withModel('multilingual')
+        ->withMinConfidence(0.6)
+        ->withLanguage('de')
+        ->withLanguageHint('de_AT')
+        ->withMaxLength(256)
+        ->withHeadMaxLength(32);
+
+    $moved = $original->withContext(Context::text('Die App stürzt ab.'));
+
+    expect([$moved->model, $moved->minConfidence, $moved->language, $moved->languageHint, $moved->maxLength, $moved->headMaxLength])
+        ->toBe(['multilingual', 0.6, 'de', 'de_AT', 256, 32]);
+});
+
 it('cannot be changed after construction', function (): void {
     $decision = Decision::about(Context::text('We were billed twice.'));
 

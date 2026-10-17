@@ -6,6 +6,7 @@ namespace EarthlingOllie\SystemOneClassification\Protocol;
 
 use BackedEnum;
 use Closure;
+use EarthlingOllie\SystemOneClassification\Domain\Context;
 use EarthlingOllie\SystemOneClassification\Domain\Decision;
 use EarthlingOllie\SystemOneClassification\Domain\Question\ChoiceQuestion;
 use EarthlingOllie\SystemOneClassification\Domain\Question\QuestionHandle;
@@ -27,6 +28,8 @@ use EarthlingOllie\SystemOneClassification\Result\Confidence;
 use EarthlingOllie\SystemOneClassification\Result\Distribution;
 use EarthlingOllie\SystemOneClassification\Result\Meta;
 use EarthlingOllie\SystemOneClassification\Result\Result;
+use EarthlingOllie\SystemOneClassification\Result\ResultSet;
+use EarthlingOllie\SystemOneClassification\Result\Usage;
 use EarthlingOllie\SystemOneClassification\Transport\Response;
 use JsonException;
 use stdClass;
@@ -48,6 +51,7 @@ use function is_string;
 use function json_decode;
 use function json_encode;
 use function ksort;
+use function strlen;
 
 /**
  * Maps a Decision to the System One wire format (`POST /v1/systemone`, shared by laya-serve
@@ -61,6 +65,22 @@ final readonly class SystemOneCodec
 
     /** Where laya-serve reports its loaded checkpoints and their revisions. */
     public const string HEALTH_PATH = '/health';
+
+    public const string BATCH_PATH = '/v1/systemone/batch';
+
+    /**
+     * The most states one batch request may carry: laya-serve's MAX_BATCH_STATES, a fixed
+     * constant (not configurable) above which it answers 413 "too many states in batch
+     * (65 > 64)". encodeBatches() splits longer batches into several requests.
+     */
+    public const int MAX_BATCH_STATES = 64;
+
+    /**
+     * The largest request body laya-serve reads: its MAX_BODY_BYTES (2 MiB), above which it
+     * answers 413 before parsing. 64 states under its 50,000-character limit can still add up
+     * to more, so encodeBatches() also splits a batch whose body would not fit.
+     */
+    public const int MAX_BATCH_BODY_BYTES = 2 * 1024 * 1024;
 
     /**
      * @param  ModelProfile  $profile  the model behind the connection: encode() checks every
@@ -114,6 +134,53 @@ final readonly class SystemOneCodec
     }
 
     /**
+     * The batch requests that ask the decision's questions about each context, in order. A
+     * request takes as many of the next contexts as fit both MAX_BATCH_STATES and, encoded as
+     * the HTTP client sends it, MAX_BATCH_BODY_BYTES; a context too large to fit even alone
+     * goes in a request of its own, for the server to refuse as decide() would. Each body is
+     * what encode() builds for the decision, with its `state` replaced by the `states` of its
+     * contexts, so decide() and decideMany() send the questions and every request setting the
+     * same way.
+     *
+     * Every request is encoded before any is returned, so a batch with one bad context sends
+     * nothing.
+     *
+     * @param  array<mixed>  $contexts  a list of Context
+     * @param  ?string  $model  the connection's default model, as for encode()
+     * @return non-empty-list<array{states: non-empty-list<string|array<string, mixed>>, questions: array<string, array<string, mixed>>}>
+     *
+     * @throws InvalidDecision when there are no contexts, they are not a list, one is not a
+     *                         Context, or encode() refuses the decision
+     */
+    public function encodeBatches(Decision $decision, array $contexts, ?string $model = null): array
+    {
+        if ($contexts === []) {
+            throw InvalidDecision::noContexts();
+        }
+
+        if (! array_is_list($contexts)) {
+            throw InvalidDecision::contextsNotList();
+        }
+
+        $shared = $this->encode($decision, $model);
+        unset($shared['state']);
+        $states = [];
+
+        foreach ($contexts as $position => $context) {
+            if (! $context instanceof Context) {
+                throw InvalidDecision::notAContext($position, $context);
+            }
+
+            $states[] = $this->encode($decision->withContext($context), $model)['state'];
+        }
+
+        return array_map(
+            static fn (array $chunk): array => ['states' => $chunk, ...$shared],
+            self::chunk($states, self::jsonBytes(['states' => [], ...$shared])),
+        );
+    }
+
+    /**
      * @param  ?float  $latencyMs  the round trip's latency, measured by the caller, for the result's meta
      *
      * @throws HostUnavailable on a 5xx
@@ -123,26 +190,50 @@ final readonly class SystemOneCodec
      */
     public function decode(Decision $decision, Response $response, ?float $latencyMs = null): Result
     {
-        $body = self::object($response, 'response');
-        $answers = $body['answers'] ?? null;
+        return $this->result($decision, self::object($response, 'response'), $response->body, $latencyMs);
+    }
 
-        if (! is_array($answers) || array_is_list($answers)) {
-            throw MalformedResponse::because('The response has no answers object.', $response->body);
+    /**
+     * Reads one batch response: a Result per state sent, in order, each with the meta its
+     * entry reports (and no latency: the request's covers every state), and the response's
+     * `total_usage` (null when the server reports none).
+     *
+     * @param  int  $states  how many states the request sent
+     *
+     * @throws HostUnavailable on a 5xx
+     * @throws RejectedByModel on a 4xx
+     * @throws MalformedResponse when the status or body is not what the protocol defines,
+     *                           or there is not exactly one result per state
+     * @throws InvalidDecision for a decision encode() refuses, so never for one that was sent
+     */
+    public function decodeBatch(Decision $decision, int $states, Response $response): ResultSet
+    {
+        $body = self::object($response, 'batch response');
+        $results = $body['results'] ?? null;
+
+        if (! is_array($results) || ! array_is_list($results)) {
+            throw MalformedResponse::because('The batch response has no results list.', $response->body);
+        }
+
+        if (count($results) !== $states) {
+            throw MalformedResponse::because('The batch response has '.count($results)." results for {$states} states.", $response->body);
         }
 
         $decoded = [];
 
-        foreach ($decision->questions() as $question) {
-            $answer = $answers[$question->key] ?? throw MalformedResponse::because("The response has no answer for '{$question->key}'.", $response->body);
+        foreach ($results as $position => $payload) {
+            try {
+                if (! is_array($payload) || array_is_list($payload)) {
+                    throw MalformedResponse::because('The response is not a JSON object.', $response->body);
+                }
 
-            if (! is_array($answer)) {
-                throw MalformedResponse::because("The answer for '{$question->key}' is not an object.", $response->body);
+                $decoded[] = $this->result($decision, $payload, $response->body, null);
+            } catch (MalformedResponse $malformed) {
+                throw MalformedResponse::because("Result {$position} of the batch response: {$malformed->getMessage()}", $response->body);
             }
-
-            $decoded[$question->key] = ['question' => $question, 'answer' => $this->wire($question)['decode']($answer, $response->body, $decision->minConfidence !== null)];
         }
 
-        return new Result($decoded, self::decodeMeta($body, $response->body, $latencyMs));
+        return new ResultSet($decoded, self::usage($body['total_usage'] ?? null, $response->body));
     }
 
     /**
@@ -186,6 +277,94 @@ final readonly class SystemOneCodec
         ksort($decoded, SORT_STRING);
 
         return $decoded;
+    }
+
+    /**
+     * The Result in one single-call payload (`{answers, model, routing, usage}`): the whole body
+     * of a decide() response, or one entry of a batch response's `results`.
+     *
+     * @param  array<mixed>  $payload
+     */
+    private function result(Decision $decision, array $payload, string $body, ?float $latencyMs): Result
+    {
+        $answers = $payload['answers'] ?? null;
+
+        if (! is_array($answers) || array_is_list($answers)) {
+            throw MalformedResponse::because('The response has no answers object.', $body);
+        }
+
+        $decoded = [];
+
+        foreach ($decision->questions() as $question) {
+            $answer = $answers[$question->key] ?? throw MalformedResponse::because("The response has no answer for '{$question->key}'.", $body);
+
+            if (! is_array($answer)) {
+                throw MalformedResponse::because("The answer for '{$question->key}' is not an object.", $body);
+            }
+
+            $decoded[$question->key] = ['question' => $question, 'answer' => $this->wire($question)['decode']($answer, $body, $decision->minConfidence !== null)];
+        }
+
+        return new Result($decoded, self::decodeMeta($payload, $body, $latencyMs));
+    }
+
+    /**
+     * Splits the states, in order, into chunks that fit one batch request each.
+     *
+     * @param  non-empty-list<string|array<string, mixed>>  $states
+     * @param  int  $overhead  the bytes of the body around its `states` list
+     * @return non-empty-list<non-empty-list<string|array<string, mixed>>>
+     */
+    private static function chunk(array $states, int $overhead): array
+    {
+        $chunks = [];
+        $chunk = [];
+        $bytes = $overhead;
+
+        foreach ($states as $state) {
+            $size = self::jsonBytes($state);
+
+            // One more state also adds the comma before it.
+            if ($chunk !== [] && (count($chunk) === self::MAX_BATCH_STATES || $bytes + 1 + $size > self::MAX_BATCH_BODY_BYTES)) {
+                $chunks[] = $chunk;
+                $chunk = [];
+                $bytes = $overhead;
+            }
+
+            $bytes += ($chunk === [] ? 0 : 1) + $size;
+            $chunk[] = $state;
+        }
+
+        $chunks[] = $chunk;
+
+        return $chunks;
+    }
+
+    /**
+     * The bytes a value takes in a request body. HttpTransport's client encodes with
+     * json_encode()'s default flags, so this is the size it sends; those flags escape slashes
+     * and non-ASCII characters, so no other choice of flags would send more.
+     */
+    private static function jsonBytes(mixed $value): int
+    {
+        return strlen(json_encode($value, JSON_THROW_ON_ERROR));
+    }
+
+    /** A `{input_tokens, output_tokens, ...}` usage object, or null when the server sent none. */
+    private static function usage(mixed $usage, string $body): ?Usage
+    {
+        if ($usage === null) {
+            return null;
+        }
+
+        $input = is_array($usage) ? ($usage['input_tokens'] ?? null) : null;
+        $output = is_array($usage) ? ($usage['output_tokens'] ?? null) : null;
+
+        if (! is_int($input) || ! is_int($output) || $input < 0 || $output < 0) {
+            throw MalformedResponse::because('The batch response has a total_usage without non-negative integer input_tokens and output_tokens.', $body);
+        }
+
+        return new Usage($input, $output);
     }
 
     /**

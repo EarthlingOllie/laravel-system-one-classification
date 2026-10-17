@@ -520,12 +520,12 @@ How the typing works:
     `assertNothingDecided()` and `assertAsked($question)` (some result reads that handle).
     They use PHPUnit's `Assert`, which an app's test suite always has.
   - **Still to wire in the stack** (built on #5's branch, without #6, #7, #8 or #9):
-    - #8 `decideMany()`: add `decideMany(array $contexts, Decision $decision): ResultSet`
-      to `Client\Decider` (so `ConnectionResolver` gets it too), and to `SystemOneFake` and
-      `FakeConnection` as a loop of `SystemOneFake::answer($decision->withContext($c), …)`
-      collected into a `ResultSet` (its `usage` null), after encoding with
-      `encodeBatches()`. Each context is then one recorded decision, so the assertions
-      cover batches unchanged.
+    - #8 `decideMany()` (done on the integration branch): on `Client\Decider` (so
+      `ConnectionResolver` too), `SystemOneFake` and `FakeConnection`. The batch is first
+      encoded with `encodeBatches()`, so the fake refuses what the real client refuses
+      before recording anything; then each context is answered and recorded as one
+      decision (`withContext()`), so the assertions cover batches unchanged. The
+      `ResultSet`'s usage is null.
     - #7 abstention (done on the integration branch): `FakeAnswer::abstained($script)`
       keeps the script's value and reads as `Abstained` at the decision's
       `min_confidence`; every other answer on a gated decision reads as `Passed` at it,

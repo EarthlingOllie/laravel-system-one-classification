@@ -54,6 +54,7 @@ Route::get('/', function (Application $app): string {
             <p><a href="/score">Ask one score question</a></p>
             <p><a href="/limits">Ask a choice over 101 topics</a> (more than Laya allows)</p>
             <p><a href="/connections">The configured connections</a> (every question page takes <code>?connection=</code>)</p>
+            <p><a href="/decide-many">Ask it about several texts</a></p>
         </body>
         </html>
         HTML;
@@ -496,4 +497,62 @@ Route::get('/connections', function (SystemOneManager $manager): string {
         </body>
         </html>
         HTML;
+});
+
+/*
+ * The same question about several texts, end to end: SystemOne::decideMany() against the
+ * batch endpoint. Each non-blank ?text[]= is one context, in order; with none, three default
+ * tickets are asked about. Like the question pages it takes ?connection=, ?model=,
+ * ?min_confidence=, ?cache=1 and ?include_context=1, and lists the events.
+ */
+Route::get('/decide-many', function (Request $request) use ($model, $connection, $decision, $settings, $abstention, $events, $failure, $page): Response {
+    $given = $request->query('text');
+    $texts = is_array($given)
+        ? array_values(array_filter($given, static fn (mixed $text): bool => is_string($text) && trim($text) !== ''))
+        : [];
+    if ($texts === []) {
+        $texts = [
+            'Hi, we were billed twice for March. Please refund the duplicate charge today or we will cancel our plan.',
+            'The app crashes every time I open the settings page.',
+            'Just wanted to say the new dashboard looks great.',
+        ];
+    }
+    $cache = $settings($request);
+    $pinned = $model($request);
+    $asked = $connection($request);
+    $churn = Question::yesNo('churn', 'Does the customer threaten to cancel or leave?');
+    $status = 200;
+
+    try {
+        $results = SystemOne::connection($asked)->decideMany(
+            array_map(Context::text(...), $texts),
+            $decision($texts[0], $pinned, $request)->ask($churn),
+        );
+        $rows = '';
+        foreach ($texts as $position => $text) {
+            $answer = $results[$position]->get($churn);
+            $probability = e((string) $answer->probability);
+            $verdict = e($answer->verdict(yes: 0.8, no: 0.2)->name);
+            [$gate] = $abstention($answer);
+            $checkpoint = e((string) $results[$position]->meta->checkpoint);
+            $text = e($text);
+            $rows .= "<tr data-position=\"{$position}\" data-probability=\"{$probability}\" data-verdict=\"{$verdict}\" data-checkpoint=\"{$checkpoint}\" {$gate}>"
+                ."<td>{$position}</td><td>{$text}</td><td>{$probability}</td><td>{$verdict}</td><td>{$answer->abstention->name}</td><td>{$checkpoint}</td></tr>\n";
+        }
+        $count = count($results);
+        $inputTokens = e((string) ($results->usage->inputTokens ?? 'n/a'));
+        $outcome = <<<HTML
+            <table id="results" data-results="{$count}" data-input-tokens="{$inputTokens}">
+                <thead><tr><th>#</th><th>Text</th><th>probability</th><th>verdict(yes: 0.8, no: 0.2)</th><th>abstention</th><th>checkpoint</th></tr></thead>
+                <tbody>{$rows}</tbody>
+            </table>
+            <p>{$count} results, {$inputTokens} input tokens.</p>
+            HTML;
+    } catch (SystemOneException $exception) {
+        [$status, $outcome] = $failure($exception);
+    }
+
+    $shown = count($texts) === 1 ? '1 text' : count($texts).' texts';
+
+    return new Response($page('One yes/no question, many texts', $shown, e($churn->instructions), $pinned, $outcome.$events($request, $cache), $asked), $status);
 });

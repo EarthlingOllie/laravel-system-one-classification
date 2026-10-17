@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace EarthlingOllie\SystemOneClassification\Laravel\Facades;
 
 use EarthlingOllie\SystemOneClassification\Client\Decider;
+use EarthlingOllie\SystemOneClassification\Domain\Context;
 use EarthlingOllie\SystemOneClassification\Domain\Decision;
 use EarthlingOllie\SystemOneClassification\Domain\Question\QuestionHandle;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidConfiguration;
@@ -14,6 +15,7 @@ use EarthlingOllie\SystemOneClassification\Laravel\Testing\FakeAnswer;
 use EarthlingOllie\SystemOneClassification\Laravel\Testing\SystemOneFake;
 use EarthlingOllie\SystemOneClassification\Result\Answer\Answer;
 use EarthlingOllie\SystemOneClassification\Result\Result;
+use EarthlingOllie\SystemOneClassification\Result\ResultSet;
 use Illuminate\Support\Facades\Facade;
 
 /**
@@ -23,6 +25,7 @@ use Illuminate\Support\Facades\Facade;
  * @method static void assertDecidedTimes(int $times)
  * @method static void assertNothingDecided()
  * @method static void assertAsked(QuestionHandle<Answer> $question)
+ * @method static ResultSet decideMany(list<Context> $contexts, Decision $decision)
  *
  * @see SystemOneManager
  * @see SystemOneFake for the assertions, once fake() has swapped it in

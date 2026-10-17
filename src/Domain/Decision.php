@@ -152,6 +152,15 @@ final readonly class Decision
     }
 
     /**
+     * A new decision that asks the same questions, with the same settings, about another
+     * context. decideMany() uses it to ask one decision's questions about many contexts.
+     */
+    public function withContext(Context $context): self
+    {
+        return $this->copy(context: $context);
+    }
+
+    /**
      * @return list<QuestionHandle<Answer>>
      */
     public function questions(): array
@@ -173,6 +182,7 @@ final readonly class Decision
      * @param  ?positive-int  $headMaxLength
      */
     private function copy(
+        ?Context $context = null,
         ?array $questions = null,
         ?string $model = null,
         ?float $minConfidence = null,
@@ -182,7 +192,7 @@ final readonly class Decision
         ?int $headMaxLength = null,
     ): self {
         return new self(
-            $this->context,
+            $context ?? $this->context,
             $questions ?? $this->questions,
             $model ?? $this->model,
             $minConfidence ?? $this->minConfidence,

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace EarthlingOllie\SystemOneClassification\Laravel;
 
 use EarthlingOllie\SystemOneClassification\Client\DecisionClient;
+use EarthlingOllie\SystemOneClassification\Domain\Context;
 use EarthlingOllie\SystemOneClassification\Domain\Decision;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidConfiguration;
 use EarthlingOllie\SystemOneClassification\Model\JevProfile;
@@ -12,6 +13,7 @@ use EarthlingOllie\SystemOneClassification\Model\LayaProfile;
 use EarthlingOllie\SystemOneClassification\Model\ModelProfile;
 use EarthlingOllie\SystemOneClassification\Protocol\SystemOneCodec;
 use EarthlingOllie\SystemOneClassification\Result\Result;
+use EarthlingOllie\SystemOneClassification\Result\ResultSet;
 use EarthlingOllie\SystemOneClassification\Transport\HttpTransport;
 use EarthlingOllie\SystemOneClassification\Transport\RetryPolicy;
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
@@ -153,6 +155,17 @@ final readonly class SystemOneManager implements ConnectionResolver
     public function decide(Decision $decision): Result
     {
         return $this->connection()->decide($decision);
+    }
+
+    /**
+     * Asks the decision's questions about each context on the default connection (see
+     * DecisionClient::decideMany()).
+     *
+     * @param  list<Context>  $contexts
+     */
+    public function decideMany(array $contexts, Decision $decision): ResultSet
+    {
+        return $this->connection()->decideMany($contexts, $decision);
     }
 
     /** @throws InvalidConfiguration */

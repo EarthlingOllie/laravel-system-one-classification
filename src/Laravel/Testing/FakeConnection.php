@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace EarthlingOllie\SystemOneClassification\Laravel\Testing;
 
 use EarthlingOllie\SystemOneClassification\Client\Decider;
+use EarthlingOllie\SystemOneClassification\Domain\Context;
 use EarthlingOllie\SystemOneClassification\Domain\Decision;
 use EarthlingOllie\SystemOneClassification\Model\ModelProfile;
 use EarthlingOllie\SystemOneClassification\Result\Result;
+use EarthlingOllie\SystemOneClassification\Result\ResultSet;
 
 /**
  * What SystemOne::connection() returns under the fake: the fake, answering on one connection.
@@ -25,5 +27,11 @@ final readonly class FakeConnection implements Decider
     public function decide(Decision $decision): Result
     {
         return $this->fake->answer($decision, $this);
+    }
+
+    /** @param  list<Context>  $contexts */
+    public function decideMany(array $contexts, Decision $decision): ResultSet
+    {
+        return $this->fake->answerMany($contexts, $decision, $this);
     }
 }

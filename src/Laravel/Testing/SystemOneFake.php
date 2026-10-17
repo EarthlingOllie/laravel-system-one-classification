@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace EarthlingOllie\SystemOneClassification\Laravel\Testing;
 
+use EarthlingOllie\SystemOneClassification\Domain\Context;
 use EarthlingOllie\SystemOneClassification\Domain\Decision;
 use EarthlingOllie\SystemOneClassification\Domain\Question\HandleIdentity;
 use EarthlingOllie\SystemOneClassification\Domain\Question\QuestionHandle;
@@ -16,6 +17,7 @@ use EarthlingOllie\SystemOneClassification\Laravel\SystemOneManager;
 use EarthlingOllie\SystemOneClassification\Protocol\SystemOneCodec;
 use EarthlingOllie\SystemOneClassification\Result\Answer\Answer;
 use EarthlingOllie\SystemOneClassification\Result\Result;
+use EarthlingOllie\SystemOneClassification\Result\ResultSet;
 use Illuminate\Support\Testing\Fakes\Fake;
 use PHPUnit\Framework\Assert;
 
@@ -84,10 +86,48 @@ final class SystemOneFake implements ConnectionResolver, Fake
     }
 
     /**
+     * Asks the decision's questions about each context on the default connection.
+     *
+     * @param  list<Context>  $contexts
+     *
+     * @throws InvalidConfiguration when the default connection is not configured
+     */
+    public function decideMany(array $contexts, Decision $decision): ResultSet
+    {
+        return $this->connection()->decideMany($contexts, $decision);
+    }
+
+    /**
+     * Answers a batch on a connection: each context is one decision, answered and recorded by
+     * answer(). The batch is first encoded as the real client's batches are, so a batch it
+     * would refuse is refused before anything is recorded. Its usage is null: no tokens were
+     * counted. FakeConnection's half of decideMany().
+     *
+     * @internal
+     *
+     * @param  array<mixed>  $contexts
+     *
+     * @throws InvalidDecision when the real client would refuse the batch
+     * @throws UnscriptedQuestion when strict and a question has no script
+     */
+    public function answerMany(array $contexts, Decision $decision, FakeConnection $connection): ResultSet
+    {
+        new SystemOneCodec($connection->profile)->encodeBatches($decision, $contexts);
+        $results = [];
+
+        /** @var list<Context> $contexts encodeBatches() refuses anything else */
+        foreach ($contexts as $context) {
+            $results[] = $this->answer($decision->withContext($context), $connection);
+        }
+
+        return new ResultSet($results, null);
+    }
+
+    /**
      * Answers a decision on a connection and records it. FakeConnection's half of decide().
      *
-     * Every way to send decisions (decideMany() too, once it exists) comes through here, one
-     * decision at a time, so each is answered and recorded alike.
+     * Every way to send decisions (decideMany() too) comes through here, one decision at a
+     * time, so each is answered and recorded alike.
      *
      * @internal
      *
