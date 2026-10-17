@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use EarthlingOllie\SystemOneClassification\Laravel\Events\DecisionMade;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Orchestra\Testbench\Concerns\WithWorkbench;
@@ -189,6 +191,17 @@ it('answers a repeated decision from the cache with ?cache=1, and misses when a 
 
     $this->get('/decide?cache=1&min_confidence=0.5')->assertOk()->assertSee('data-cached="no"', escape: false);
     expect($posts())->toBe(2);
+});
+
+it('lists only the events of its own request, with one listener however many requests the app serves', function (): void {
+    Http::fake(['*' => Http::response(['answers' => ['churn' => ['type' => 'noul', 'noul' => 0.7]]])]);
+
+    $this->get('/decide');
+    $this->get('/decide');
+    $page = (string) $this->get('/decide')->getContent();
+
+    expect(substr_count($page, 'data-event="DecisionMade"'))->toBe(1)
+        ->and(Event::getListeners(DecisionMade::class))->toHaveCount(1);
 });
 
 it('leaves caching off without ?cache=1', function (): void {

@@ -62,6 +62,18 @@ Route::get('/', function (Application $app): string {
  * use another server or a key, add SYSTEM_ONE_URL / SYSTEM_ONE_API_KEY to the `env:`
  * list in testbench.yaml.
  */
+/*
+ * The decide page lists the events its decision dispatched. One listener, registered once
+ * when the routes load, keeps them on the current request, so a long-lived app (Octane, a
+ * test making several requests) neither piles up listeners nor mixes requests' events.
+ */
+
+Event::listen([DecisionMade::class, DecisionFailed::class], function (DecisionMade|DecisionFailed $event): void {
+    $attributes = request()->attributes;
+    $seen = $attributes->get('workbench.system-one-events');
+    $attributes->set('workbench.system-one-events', [...(is_array($seen) ? $seen : []), $event]);
+});
+
 Route::get('/decide', function (Request $request): Response {
     // A query string can make ?text= an array (?text[]=x), and Context::text() refuses blank
     // text: anything but a non-blank string gets the default ticket.
@@ -84,11 +96,6 @@ Route::get('/decide', function (Request $request): Response {
     if ($request->query('include_context') === '1') {
         config(['system-one.events.include_context' => true]);
     }
-    /** @var list<DecisionMade|DecisionFailed> $events */
-    $events = [];
-    Event::listen([DecisionMade::class, DecisionFailed::class], function (DecisionMade|DecisionFailed $event) use (&$events): void {
-        $events[] = $event;
-    });
 
     try {
         $decision = Decision::about(Context::text($text))->ask($churn);
@@ -151,7 +158,11 @@ Route::get('/decide', function (Request $request): Response {
     $question = e($churn->instructions);
     $cacheState = $cache ? 'on' : 'off';
     $dispatched = '';
-    foreach ($events as $event) {
+    $events = $request->attributes->get('workbench.system-one-events');
+    foreach (is_array($events) ? $events : [] as $event) {
+        if (! $event instanceof DecisionMade && ! $event instanceof DecisionFailed) {
+            continue;
+        }
         $name = e(class_basename($event));
         $connection = e($event->connection);
         $keys = e(implode(',', $event->questionKeys));
