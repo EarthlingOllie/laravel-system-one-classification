@@ -25,11 +25,11 @@ function fakeAnswers(array $probabilities): void
  * Runs the command with $stdin as what it reads when no text is given, as
  * `echo text | php artisan system-one:try` does.
  */
-function tryWithStdin(string $stdin, array $arguments): CommandTester
+function tryWithStdin(string $stdin, array $arguments, ?Closure $isTerminal = null): CommandTester
 {
     $path = (string) tempnam(sys_get_temp_dir(), 'system-one-stdin-');
     file_put_contents($path, $stdin);
-    $command = new TryCommand($path);
+    $command = new TryCommand($path, $isTerminal);
     $command->setLaravel(app());
     $tester = new CommandTester($command);
 
@@ -163,6 +163,35 @@ it('exits with 2 when stdin is empty and no text is given', function (): void {
 
     expect($tester->getStatusCode())->toBe(Command::INVALID)
         ->and($tester->getDisplay())->toContain('The context text must not be empty.');
+    Http::assertNothingSent();
+});
+
+it('exits with 2 instead of waiting for input when no text is given and stdin is a terminal', function (): void {
+    Http::fake();
+    $checked = null;
+
+    $tester = tryWithStdin('never read', ['--yes-no' => ['Refund?']], function (mixed $stdin) use (&$checked): bool {
+        $checked = $stdin;
+
+        return true;
+    });
+
+    expect($tester->getStatusCode())->toBe(Command::INVALID)
+        ->and($tester->getDisplay())->toContain('No text to ask about: give it as an argument, with --file, or on stdin (cat ticket.txt | php artisan system-one:try ...).')
+        ->and(is_resource($checked))->toBeTrue();
+    Http::assertNothingSent();
+});
+
+it('exits with 2 when stdin cannot be opened', function (): void {
+    Http::fake();
+    $command = new TryCommand('/nonexistent/system-one-stdin');
+    $command->setLaravel(app());
+    $tester = new CommandTester($command);
+
+    $tester->execute(['--yes-no' => ['Refund?']], ['interactive' => false]);
+
+    expect($tester->getStatusCode())->toBe(Command::INVALID)
+        ->and($tester->getDisplay())->toContain('Cannot read the text from stdin.');
     Http::assertNothingSent();
 });
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace EarthlingOllie\SystemOneClassification\Laravel\Commands;
 
+use Closure;
 use EarthlingOllie\SystemOneClassification\Domain\Context;
 use EarthlingOllie\SystemOneClassification\Domain\Decision;
 use EarthlingOllie\SystemOneClassification\Domain\Question;
@@ -20,12 +21,15 @@ use Illuminate\Console\Command;
 
 use function array_map;
 use function file_get_contents;
+use function fopen;
 use function is_file;
 use function is_readable;
 use function is_string;
 use function json_encode;
 use function max;
 use function round;
+use function stream_get_contents;
+use function stream_isatty;
 
 /**
  * `php artisan system-one:try "text" --yes-no="Does the customer threaten to cancel?"`: asks
@@ -53,10 +57,18 @@ final class TryCommand extends Command
     /** @var string */
     protected $description = 'Ask System One questions about some text and print the answers';
 
-    /** @param  string  $stdin  where the text is read from when neither the argument nor --file gives it */
-    public function __construct(private readonly string $stdin = 'php://stdin')
+    /** @var Closure(resource): bool */
+    private readonly Closure $isTerminal;
+
+    /**
+     * @param  string  $stdin  where the text is read from when neither the argument nor --file gives it
+     * @param  (Closure(resource): bool)|null  $isTerminal  whether that stream is a terminal, where
+     *                                                      reading would wait for the user (default: stream_isatty)
+     */
+    public function __construct(private readonly string $stdin = 'php://stdin', ?Closure $isTerminal = null)
     {
         parent::__construct();
+        $this->isTerminal = $isTerminal ?? stream_isatty(...);
     }
 
     public function handle(SystemOneManager $manager): int
@@ -136,7 +148,22 @@ final class TryCommand extends Command
             return (string) file_get_contents($file);
         }
 
-        return (string) file_get_contents($this->stdin);
+        $stdin = @fopen($this->stdin, 'rb');
+
+        if ($stdin === false) {
+            $this->error('Cannot read the text from stdin.');
+
+            return null;
+        }
+
+        // Nothing piped in: reading a terminal would hang until Ctrl-D with no hint why.
+        if (($this->isTerminal)($stdin)) {
+            $this->error('No text to ask about: give it as an argument, with --file, or on stdin (cat ticket.txt | php artisan system-one:try ...).');
+
+            return null;
+        }
+
+        return (string) stream_get_contents($stdin);
     }
 
     /** @param list<YesNoQuestion> $questions */
