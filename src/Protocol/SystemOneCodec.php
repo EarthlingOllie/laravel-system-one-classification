@@ -61,7 +61,7 @@ final readonly class SystemOneCodec
     public function __construct(private ModelProfile $profile = new LayaProfile) {}
 
     /**
-     * @return array{state: string, questions: array<string, array<string, mixed>>} choice criteria are a stdClass, so they always encode as a JSON object
+     * @return array{state: string, model?: string, questions: array<string, array<string, mixed>>} choice criteria are a stdClass, so they always encode as a JSON object; `model` only when the decision pins one
      *
      * @throws InvalidDecision when the decision cannot be sent, or breaks a limit of the profile
      */
@@ -79,7 +79,13 @@ final readonly class SystemOneCodec
             throw InvalidDecision::noQuestions();
         }
 
-        return ['state' => $decision->context->text, 'questions' => $questions];
+        $body = ['state' => $decision->context->text];
+
+        if ($decision->model !== null) {
+            $body['model'] = $decision->model;
+        }
+
+        return [...$body, 'questions' => $questions];
     }
 
     /**

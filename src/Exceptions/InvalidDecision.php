@@ -9,6 +9,7 @@ use Error;
 use InvalidArgumentException;
 
 use function get_debug_type;
+use function implode;
 
 /** A decision or question that cannot be sent, caught before anything goes over the wire. */
 final class InvalidDecision extends InvalidArgumentException implements SystemOneException
@@ -110,6 +111,23 @@ final class InvalidDecision extends InvalidArgumentException implements SystemOn
     public static function tooManyOptions(string $key, int $options, int $limit, string $profile): self
     {
         return new self("Choice question '{$key}' has {$options} options, more than the {$limit} the {$profile} profile allows per choice question.");
+    }
+
+    public static function blankModel(): self
+    {
+        return new self('A model must not be blank; leave it out to let the server choose.');
+    }
+
+    /**
+     * @param  list<string>  $accepted
+     */
+    public static function unacceptedModel(string $model, string $profile, array $accepted): self
+    {
+        if ($accepted === []) {
+            return new self("The decision pins model '{$model}', but the {$profile} profile accepts no model values; list the host's in the connection's 'models' config, or leave the model out.");
+        }
+
+        return new self("The decision pins model '{$model}', which the {$profile} profile does not accept; use one of: ".implode(', ', $accepted).'.');
     }
 
     public static function unsupportedQuestion(object $question): self

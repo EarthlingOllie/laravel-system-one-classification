@@ -76,3 +76,28 @@ it('sends an undescribed score level as null when the profile allows it', functi
     expect((new SystemOneCodec(new JevProfile))->encode(scoreOver(UndescribedLevel::class))['questions']['health']['criteria'])
         ->toBe(['fine', null]);
 });
+
+it('sends every model value the profile accepts', function (ModelProfile $profile): void {
+    foreach ($profile->models() as $model) {
+        expect((new SystemOneCodec($profile))->encode(scoreOver(Urgency::class)->withModel($model))['model'])->toBe($model);
+    }
+})->with([
+    'laya' => fn (): ModelProfile => new LayaProfile,
+    'laya with extra models' => fn (): ModelProfile => new LayaProfile(extraModels: ['acme/laya-finetune']),
+    'jev with configured models' => fn (): ModelProfile => new JevProfile(['jev-1', 'jev-2']),
+]);
+
+it('refuses a model the profile does not accept, listing the ones it does', function (): void {
+    expect(fn () => (new SystemOneCodec(new LayaProfile))->encode(scoreOver(Urgency::class)->withModel('someone/else')))
+        ->toThrow(InvalidDecision::class, "The decision pins model 'someone/else', which the laya profile does not accept; use one of: ".implode(', ', LayaProfile::MODELS).'.');
+});
+
+it('refuses a model that differs from an accepted one only in case or spacing', function (string $model): void {
+    expect(fn () => (new SystemOneCodec(new LayaProfile))->encode(scoreOver(Urgency::class)->withModel($model)))
+        ->toThrow(InvalidDecision::class, "The decision pins model '{$model}'");
+})->with(['English', ' english']);
+
+it('refuses every model on a profile that lists none, saying where to list them', function (): void {
+    expect(fn () => (new SystemOneCodec(new JevProfile))->encode(scoreOver(Urgency::class)->withModel('jev-1')))
+        ->toThrow(InvalidDecision::class, "The decision pins model 'jev-1', but the jev profile accepts no model values; list the host's in the connection's 'models' config, or leave the model out.");
+});

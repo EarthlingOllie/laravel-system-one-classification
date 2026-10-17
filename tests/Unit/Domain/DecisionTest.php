@@ -66,8 +66,38 @@ it('leaves the decision unchanged when a duplicate key is rejected', function ()
     expect($decision->questions())->toBe([$churn]);
 });
 
+it('pins no model until withModel() is called', function (): void {
+    expect(Decision::about(Context::text('We were billed twice.'))->model)->toBeNull();
+});
+
+it('returns a new decision from withModel() and leaves the original unchanged', function (): void {
+    $churn = Question::yesNo('churn', 'Does the customer threaten to cancel?');
+    $original = Decision::about(Context::text('We were billed twice.'))->ask($churn);
+
+    $pinned = $original->withModel('english');
+
+    expect($pinned)->not->toBe($original)
+        ->and($pinned->model)->toBe('english')
+        ->and($pinned->context)->toBe($original->context)
+        ->and($pinned->questions())->toBe([$churn])
+        ->and($original->model)->toBeNull();
+});
+
+it('keeps the pinned model when more questions are asked', function (): void {
+    $decision = Decision::about(Context::text('We were billed twice.'))
+        ->withModel('multilingual')
+        ->ask(Question::yesNo('churn', 'Does the customer threaten to cancel?'));
+
+    expect($decision->model)->toBe('multilingual');
+});
+
+it('rejects a blank model', function (string $model): void {
+    Decision::about(Context::text('We were billed twice.'))->withModel($model);
+})->throws(InvalidDecision::class, 'A model must not be blank; leave it out to let the server choose.')->with(['', ' ', "\t\n"]);
+
 it('cannot be changed after construction', function (): void {
     $decision = Decision::about(Context::text('We were billed twice.'));
 
-    expect(fn () => $decision->context = Context::text('other'))->toThrow(Error::class);
+    expect(fn () => $decision->context = Context::text('other'))->toThrow(Error::class)
+        ->and(fn () => $decision->model = 'english')->toThrow(Error::class);
 });

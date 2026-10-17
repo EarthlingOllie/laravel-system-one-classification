@@ -10,6 +10,7 @@ use EarthlingOllie\SystemOneClassification\Domain\Question\ScoreQuestion;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidDecision;
 
 use function count;
+use function in_array;
 
 /**
  * Checks a decision against a model profile's limits, so a decision the model would refuse
@@ -18,9 +19,18 @@ use function count;
  */
 final readonly class ProfileLimits
 {
-    /** @throws InvalidDecision naming the first question that breaks a limit, and the limit */
+    /**
+     * @throws InvalidDecision for a pinned model the profile does not accept, or naming the
+     *                         first question that breaks a limit, and the limit
+     */
     public static function check(ModelProfile $profile, Decision $decision): void
     {
+        $model = $decision->model;
+
+        if ($model !== null && ! in_array($model, $profile->models(), true)) {
+            throw InvalidDecision::unacceptedModel($model, $profile->name, $profile->models());
+        }
+
         foreach ($decision->questions() as $question) {
             if ($question instanceof ChoiceQuestion) {
                 $options = count($question->options());

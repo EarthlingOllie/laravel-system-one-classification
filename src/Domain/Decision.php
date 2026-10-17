@@ -10,6 +10,7 @@ use EarthlingOllie\SystemOneClassification\Result\Answer\Answer;
 
 use function array_column;
 use function in_array;
+use function trim;
 
 /**
  * An immutable request: questions about one context. Every builder returns a new instance.
@@ -18,15 +19,35 @@ final readonly class Decision
 {
     /**
      * @param  list<QuestionHandle<Answer>>  $questions
+     * @param  ?string  $model  the checkpoint to answer with (the wire's `model`), or null to
+     *                          let the server choose
      */
     private function __construct(
         public Context $context,
         private array $questions,
+        public ?string $model,
     ) {}
 
     public static function about(Context $context): self
     {
-        return new self($context, []);
+        return new self($context, [], null);
+    }
+
+    /**
+     * A new decision pinned to one checkpoint, such as 'english' or 'multilingual'.
+     *
+     * Which values are valid depends on the model: the connection's profile checks it before
+     * sending.
+     *
+     * @throws InvalidDecision when the model is blank
+     */
+    public function withModel(string $model): self
+    {
+        if (trim($model) === '') {
+            throw InvalidDecision::blankModel();
+        }
+
+        return new self($this->context, $this->questions, $model);
     }
 
     /**
@@ -50,7 +71,7 @@ final readonly class Decision
             $asked[] = $question;
         }
 
-        return new self($this->context, $asked);
+        return new self($this->context, $asked, $this->model);
     }
 
     /**

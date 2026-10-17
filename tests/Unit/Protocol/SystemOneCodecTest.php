@@ -42,6 +42,16 @@ it('encodes the context as the state and every question under its key', function
     ]);
 });
 
+it('sends the pinned model, and no model field when none is pinned', function (): void {
+    $pinned = (new SystemOneCodec)->encode(churnDecision()->withModel('english'));
+
+    expect($pinned)->toBe([
+        'state' => 'We will cancel.',
+        'model' => 'english',
+        'questions' => ['churn' => ['type' => 'noul', 'instructions' => 'Does the customer threaten to cancel?']],
+    ])->and((new SystemOneCodec)->encode(churnDecision()))->not->toHaveKey('model');
+});
+
 it('refuses to encode a decision that asks nothing', function (): void {
     (new SystemOneCodec)->encode(Decision::about(Context::text('We will cancel.')));
 })->throws(InvalidDecision::class, 'The decision asks no questions; add one with ask().');
