@@ -8,6 +8,7 @@ use EarthlingOllie\SystemOneClassification\Client\Decider;
 use EarthlingOllie\SystemOneClassification\Domain\Decision;
 use EarthlingOllie\SystemOneClassification\Domain\Question\QuestionHandle;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidConfiguration;
+use EarthlingOllie\SystemOneClassification\Laravel\ConnectionResolver;
 use EarthlingOllie\SystemOneClassification\Laravel\SystemOneManager;
 use EarthlingOllie\SystemOneClassification\Laravel\Testing\FakeAnswer;
 use EarthlingOllie\SystemOneClassification\Laravel\Testing\SystemOneFake;
@@ -35,8 +36,11 @@ final class SystemOne extends Facade
      *
      *     SystemOne::fake([FakeAnswer::choice($department, Department::Billing, confidence: 0.9)]);
      *
-     * Both the facade and the container (SystemOneManager, ConnectionResolver) then resolve to
-     * the fake. Calling it again starts a new fake, with no scripts or decisions from the last.
+     * The facade and the container's ConnectionResolver then resolve to the fake; inject that
+     * interface to be faked. SystemOneManager itself stays the real manager (the fake cannot
+     * be one, as the manager is final), and so does anything that resolved the interface
+     * before fake() was called, as with any Laravel fake. Calling it again starts a new fake,
+     * with no scripts or decisions from the last.
      *
      * @param  list<FakeAnswer<Answer>>  $answers
      *
@@ -53,6 +57,6 @@ final class SystemOne extends Facade
 
     protected static function getFacadeAccessor(): string
     {
-        return SystemOneManager::class;
+        return ConnectionResolver::class;
     }
 }

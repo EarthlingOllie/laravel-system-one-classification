@@ -61,6 +61,18 @@ function failureOf(Closure $assertion): string
     throw new LogicException('The assertion passed.');
 }
 
+/** App code that injects the concrete manager. */
+final readonly class ManagerConsumer
+{
+    public function __construct(public SystemOneManager $systemOne) {}
+}
+
+/** App code that injects the interface, as the docs advise. */
+final readonly class ResolverConsumer
+{
+    public function __construct(public ConnectionResolver $systemOne) {}
+}
+
 beforeEach(function (): void {
     // Nothing the fake does may reach a server.
     Http::preventStrayRequests();
@@ -72,9 +84,18 @@ it('swaps a fake in behind the facade and the container', function (): void {
     expect($fake)->toBeInstanceOf(SystemOneFake::class)
         ->and(SystemOne::getFacadeRoot())->toBe($fake)
         ->and(SystemOne::isFake())->toBeTrue()
-        ->and(app(SystemOneManager::class))->toBe($fake)
         // Code that type-hints the interface gets the fake too.
         ->and(app(ConnectionResolver::class))->toBe($fake);
+});
+
+it('leaves code that asks for the final manager itself with the real one, not a TypeError', function (): void {
+    $fake = SystemOne::fake();
+
+    $concrete = app(ManagerConsumer::class);
+    $injected = app(ResolverConsumer::class);
+
+    expect($concrete->systemOne)->toBeInstanceOf(SystemOneManager::class)
+        ->and($injected->systemOne)->toBe($fake);
 });
 
 it('needs an application behind the facades to read the connections from', function (): void {
