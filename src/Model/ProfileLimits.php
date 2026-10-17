@@ -6,6 +6,7 @@ namespace EarthlingOllie\SystemOneClassification\Model;
 
 use EarthlingOllie\SystemOneClassification\Domain\Decision;
 use EarthlingOllie\SystemOneClassification\Domain\Question\ChoiceQuestion;
+use EarthlingOllie\SystemOneClassification\Domain\Question\ScoreQuestion;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidDecision;
 
 use function count;
@@ -26,6 +27,14 @@ final readonly class ProfileLimits
 
                 if ($options > $profile->maxChoiceOptions) {
                     throw InvalidDecision::tooManyOptions($question->key, $options, $profile->maxChoiceOptions, $profile->name);
+                }
+            }
+
+            if ($question instanceof ScoreQuestion && $profile->requiresScoreDescriptions) {
+                foreach ($question->levels() as ['case' => $case, 'description' => $description]) {
+                    if ($description === null) {
+                        throw InvalidDecision::undescribedLevel($question->key, $case, $profile->name);
+                    }
                 }
             }
         }

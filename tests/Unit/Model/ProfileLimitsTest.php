@@ -10,6 +10,8 @@ use EarthlingOllie\SystemOneClassification\Model\JevProfile;
 use EarthlingOllie\SystemOneClassification\Model\LayaProfile;
 use EarthlingOllie\SystemOneClassification\Model\ModelProfile;
 use EarthlingOllie\SystemOneClassification\Protocol\SystemOneCodec;
+use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\UndescribedLevel;
+use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\Urgency;
 use EarthlingOllie\SystemOneClassification\Tests\Support\OptionsEnum;
 
 /*
@@ -49,3 +51,28 @@ it('refuses a choice question with one option more than the limit, naming the ke
     expect(fn () => (new SystemOneCodec($profile))->encode(choiceWithOptions($over)))
         ->toThrow(InvalidDecision::class, "Choice question 'label' has {$over} options, more than the {$limit} the {$profile->name} profile allows per choice question.");
 })->with('choice option limits');
+
+/** A decision asking one score question over the given enum. */
+function scoreOver(string $enum): Decision
+{
+    return Decision::about(Context::text('We were billed twice.'))
+        ->ask(Question::score('health', $enum, 'How healthy?'));
+}
+
+it('sends a score question whose levels are all described, whatever the profile', function (ModelProfile $profile): void {
+    expect((new SystemOneCodec($profile))->encode(scoreOver(Urgency::class))['questions']['health']['criteria'])
+        ->toBe(['can wait', 'soon', 'today', 'blocking']);
+})->with([
+    'laya' => fn (): ModelProfile => new LayaProfile,
+    'jev' => fn (): ModelProfile => new JevProfile,
+]);
+
+it('refuses an undescribed score level when the profile requires descriptions, naming the key and the case', function (): void {
+    expect(fn () => (new SystemOneCodec(new LayaProfile))->encode(scoreOver(UndescribedLevel::class)))
+        ->toThrow(InvalidDecision::class, "Level 1 of score question 'health' has no description, which the laya profile requires of every score level: give ".UndescribedLevel::class.'::Bad a #[Describe].');
+});
+
+it('sends an undescribed score level as null when the profile allows it', function (): void {
+    expect((new SystemOneCodec(new JevProfile))->encode(scoreOver(UndescribedLevel::class))['questions']['health']['criteria'])
+        ->toBe(['fine', null]);
+});

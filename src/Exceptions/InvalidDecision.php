@@ -83,11 +83,11 @@ final class InvalidDecision extends InvalidArgumentException implements SystemOn
         return new self("Score question '{$key}' has no levels: {$enum} has no cases.");
     }
 
-    public static function undescribedLevel(string $key, BackedEnum $case): self
+    public static function undescribedLevel(string $key, BackedEnum $case, string $profile): self
     {
         $enum = $case::class;
 
-        return new self("Level {$case->value} of score question '{$key}' has no description: give {$enum}::{$case->name} a #[Describe], because Laya rejects a score level without one.");
+        return new self("Level {$case->value} of score question '{$key}' has no description, which the {$profile} profile requires of every score level: give {$enum}::{$case->name} a #[Describe].");
     }
 
     public static function blankLevelDescription(string $key, BackedEnum $case): self
