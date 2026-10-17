@@ -14,7 +14,7 @@ use EarthlingOllie\SystemOneClassification\Result\Result;
 use EarthlingOllie\SystemOneClassification\Transport\Transport;
 
 /** Sends decisions to one host and returns typed results. One client per connection. */
-final readonly class DecisionClient
+final readonly class DecisionClient implements Decider
 {
     /** @param  ?string  $model  sent as `model` with every decision that pins none; null lets the server route */
     public function __construct(

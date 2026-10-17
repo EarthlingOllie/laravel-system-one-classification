@@ -38,7 +38,7 @@ use function trim;
  *
  * Config is read on every call, so runtime config() changes apply.
  */
-final readonly class SystemOneManager
+final readonly class SystemOneManager implements ConnectionResolver
 {
     /** The model profiles a connection can name. */
     private const array PROFILES = ['laya', 'jev'];
@@ -141,6 +141,22 @@ final readonly class SystemOneManager
     public function decide(Decision $decision): Result
     {
         return $this->connection()->decide($decision);
+    }
+
+    /**
+     * The name of the connection decide() uses (`system-one.default`).
+     *
+     * @throws InvalidConfiguration when it is not set
+     */
+    public function defaultConnection(): string
+    {
+        $name = $this->config->get('system-one.default');
+
+        if (! is_string($name)) {
+            throw InvalidConfiguration::noDefaultConnection();
+        }
+
+        return $name;
     }
 
     /**
@@ -295,16 +311,5 @@ final readonly class SystemOneManager
         }
 
         return $names;
-    }
-
-    private function defaultConnection(): string
-    {
-        $name = $this->config->get('system-one.default');
-
-        if (! is_string($name)) {
-            throw InvalidConfiguration::noDefaultConnection();
-        }
-
-        return $name;
     }
 }
