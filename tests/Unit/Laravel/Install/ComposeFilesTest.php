@@ -155,6 +155,15 @@ it('joins the sail network only when the file defines one', function (): void {
     expect(parsedYaml($updated)['services']['laya'])->not->toHaveKey('networks');
 });
 
+it('joins a sail network declared with no settings', function (): void {
+    $compose = "services:\n    app:\n        image: x\nnetworks:\n    sail:\n";
+
+    $updated = (new ComposeFiles(packageDir()))->addToSail($compose, '/app');
+    assert($updated !== null);
+
+    expect(parsedYaml($updated)['services']['laya']['networks'])->toBe(['sail']);
+});
+
 it('changes nothing when the laya service and its volume are already there', function (): void {
     $files = new ComposeFiles(packageDir());
     $once = $files->addToSail(sailFixture('docker-compose.yml'), '/app');

@@ -104,10 +104,10 @@ final readonly class ComposeFiles
 
         $updated = $compose;
 
-        // array_key_exists, not isset: a bare `laya:` / `sail-laya:` / `volumes:` key parses as null but is still there.
+        // array_key_exists, not isset: a bare `laya:` / `sail-laya:` / `volumes:` / `sail:` key parses as null but is still there.
         if (! array_key_exists('laya', $services)) {
             $networks = $parsed['networks'] ?? null;
-            $updated = $this->insertUnder($updated, $file, 'services', ['laya' => $this->sailService(is_array($networks) && isset($networks['sail']), $appBasePath)]);
+            $updated = $this->insertUnder($updated, $file, 'services', ['laya' => $this->sailService(is_array($networks) && array_key_exists('sail', $networks), $appBasePath)]);
         }
 
         if (! array_key_exists(self::SAIL_VOLUME, $volumes)) {
