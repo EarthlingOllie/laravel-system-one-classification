@@ -7,7 +7,6 @@ namespace EarthlingOllie\SystemOneClassification\Domain\Question;
 use BackedEnum;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidDecision;
 use EarthlingOllie\SystemOneClassification\Result\Answer\ScoreAnswer;
-use Error;
 use ReflectionEnum;
 
 use function array_map;
@@ -83,7 +82,7 @@ final readonly class ScoreQuestion implements QuestionHandle
 
     private static function describe(string $key, BackedEnum $case): string
     {
-        $description = CaseDescription::of($case, static fn (Error $e): InvalidDecision => InvalidDecision::malformedLevelDescribe($key, $case, $e));
+        $description = CaseDescription::of($case, "Level {$case->value} of score question '{$key}'");
 
         if ($description === null) {
             throw InvalidDecision::undescribedLevel($key, $case);

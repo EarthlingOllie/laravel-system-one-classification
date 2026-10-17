@@ -63,12 +63,12 @@ final class InvalidDecision extends InvalidArgumentException implements SystemOn
      * PHP's own Error stays attached as the previous exception: it names the file and line of
      * the attribute, and there is nothing secret in it.
      */
-    public static function malformedDescribe(string $key, BackedEnum $case, Error $previous): self
+    public static function malformedDescribe(string $subject, BackedEnum $case, Error $previous): self
     {
         $enum = $case::class;
 
         return new self(
-            "Option '{$case->value}' of choice question '{$key}' has a #[Describe] on {$enum}::{$case->name} that PHP cannot build: {$previous->getMessage()}",
+            "{$subject} has a #[Describe] on {$enum}::{$case->name} that PHP cannot build: {$previous->getMessage()}",
             previous: $previous,
         );
     }
@@ -95,17 +95,6 @@ final class InvalidDecision extends InvalidArgumentException implements SystemOn
         $enum = $case::class;
 
         return new self("Level {$case->value} of score question '{$key}' has a blank description: describe {$enum}::{$case->name}, because Laya rejects a score level without one.");
-    }
-
-    /** As malformedDescribe(), for a score level. */
-    public static function malformedLevelDescribe(string $key, BackedEnum $case, Error $previous): self
-    {
-        $enum = $case::class;
-
-        return new self(
-            "Level {$case->value} of score question '{$key}' has a #[Describe] on {$enum}::{$case->name} that PHP cannot build: {$previous->getMessage()}",
-            previous: $previous,
-        );
     }
 
     public static function duplicateKey(string $key): self

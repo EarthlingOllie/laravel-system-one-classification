@@ -7,7 +7,6 @@ namespace EarthlingOllie\SystemOneClassification\Domain\Question;
 use BackedEnum;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidDecision;
 use EarthlingOllie\SystemOneClassification\Result\Answer\ChoiceAnswer;
-use Error;
 
 use function enum_exists;
 use function is_subclass_of;
@@ -85,7 +84,7 @@ final readonly class ChoiceQuestion implements QuestionHandle
 
     private static function describe(string $key, BackedEnum $case): ?string
     {
-        $description = CaseDescription::of($case, static fn (Error $e): InvalidDecision => InvalidDecision::malformedDescribe($key, $case, $e));
+        $description = CaseDescription::of($case, "Option '{$case->value}' of choice question '{$key}'");
 
         if ($description !== null && trim($description) === '') {
             throw InvalidDecision::blankDescription($key, (string) $case->value);

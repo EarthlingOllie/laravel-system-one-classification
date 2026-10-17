@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace EarthlingOllie\SystemOneClassification\Domain\Question;
 
 use BackedEnum;
-use Closure;
 use EarthlingOllie\SystemOneClassification\Domain\Describe;
 use EarthlingOllie\SystemOneClassification\Domain\DescribesCases;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidDecision;
@@ -19,12 +18,13 @@ use ReflectionClassConstant;
 final readonly class CaseDescription
 {
     /**
-     * @param  Closure(Error): InvalidDecision  $malformed  builds the error for a #[Describe] PHP cannot build
+     * @param  string  $subject  what the case is to the question, for the message
+     *                           ("Option 'billing' of choice question 'department'")
      * @return ?string null when the case has no description
      *
-     * @throws InvalidDecision from $malformed
+     * @throws InvalidDecision when the case's #[Describe] cannot be built
      */
-    public static function of(BackedEnum $case, Closure $malformed): ?string
+    public static function of(BackedEnum $case, string $subject): ?string
     {
         if ($case instanceof DescribesCases) {
             return $case->describe();
@@ -38,7 +38,7 @@ final readonly class CaseDescription
         try {
             return ($attributes[0] ?? null)?->newInstance()->description;
         } catch (Error $e) {
-            throw $malformed($e);
+            throw InvalidDecision::malformedDescribe($subject, $case, $e);
         }
     }
 }
