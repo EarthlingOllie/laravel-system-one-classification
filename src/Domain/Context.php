@@ -25,8 +25,14 @@ use function trim;
  */
 final readonly class Context
 {
-    /** json_encode's default depth; the fields object itself is the first level. */
+    /**
+     * json_encode's default depth, counted from the request body: the body is level 1 and the
+     * fields object (the body's `state`) level 2, so the whole body still encodes.
+     */
     private const int MAX_DEPTH = 512;
+
+    /** The JSON level of a top-level field's value inside the request body. */
+    private const int FIELD_DEPTH = 3;
 
     /**
      * @param  string|array<string, mixed>  $state  the text, or the fields as plain JSON data
@@ -47,7 +53,7 @@ final readonly class Context
      * Named fields, such as ['subject' => …, 'body' => …], sent as a JSON object.
      *
      * Values may be strings, numbers, booleans, null and arrays of those, nested as deep as
-     * JSON allows. Objects are refused, even JsonSerializable ones: convert them first, so the
+     * JSON allows once the fields sit inside the request body (510 arrays below a field). Objects are refused, even JsonSerializable ones: convert them first, so the
      * context holds plain data that cannot change after it is built.
      *
      * @param  array<mixed>  $fields
@@ -68,7 +74,7 @@ final readonly class Context
                 throw InvalidDecision::unnamedFields();
             }
 
-            $named[$name] = self::plainCopy($value, $name, $name, 2);
+            $named[$name] = self::plainCopy($value, $name, $name, self::FIELD_DEPTH);
         }
 
         try {
@@ -87,7 +93,7 @@ final readonly class Context
      * The walk stops where json_encode would, so a self-referencing array is refused instead of
      * recursing until PHP crashes.
      *
-     * @param  int  $depth  the JSON level the value sits at if it is an array
+     * @param  int  $depth  the JSON level, within the request body, the value sits at if it is an array
      *
      * @throws InvalidDecision
      */

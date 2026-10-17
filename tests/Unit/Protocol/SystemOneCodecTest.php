@@ -44,6 +44,26 @@ it('encodes the context as the state and every question under its key', function
     ]);
 });
 
+it('encodes the deepest fields a context accepts into a request body that is still valid JSON', function (): void {
+    // The body wraps the fields object (body → state → fields), so the deepest accepted field
+    // must still fit json_encode's 512 levels once it sits inside the body.
+    $nest = function (int $levels): array {
+        $leaf = 'leaf';
+        for ($i = 0; $i < $levels; $i++) {
+            $leaf = ['n' => $leaf];
+        }
+
+        return $leaf;
+    };
+    // The body is level 1 and the fields object level 2, so a field may nest 510 arrays.
+    $decision = Decision::about(Context::fields(['deep' => $nest(510)]))
+        ->ask(Question::yesNo('churn', 'Does the customer threaten to cancel?'));
+
+    expect(json_encode((new SystemOneCodec)->encode($decision)))->toBeString()
+        ->and(fn () => Context::fields(['deep' => $nest(511)]))
+        ->toThrow(InvalidDecision::class, "Maximum stack depth exceeded in the field 'deep', which nests arrays deeper than the 512 levels JSON allows.");
+});
+
 it('sends each request control under its protocol field, between the state and the questions', function (): void {
     $decision = churnDecision()
         ->withHeadMaxLength(32)
