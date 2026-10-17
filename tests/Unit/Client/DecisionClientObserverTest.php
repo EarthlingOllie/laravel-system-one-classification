@@ -31,7 +31,7 @@ it('tells the observer about each decision made, with its result, as not cached'
 });
 
 it('tells the observer a decision came from the cache', function (): void {
-    $answer = new Response(200, '{"answers":{"churn":{"type":"noul","noul":0.4}}}');
+    $answer = new Response(200, '{"answers":{"churn":{"type":"noul","noul":0.4}},"routing":{"model":"english"}}');
     $health = new Response(200, '{"revisions":{"english":"a"}}');
     $observer = new RecordingObserver;
     $client = new DecisionClient(new ScriptedTransport([$answer], [$health, $health]), new SystemOneCodec, cache: new ArrayResponseCache, observer: $observer);

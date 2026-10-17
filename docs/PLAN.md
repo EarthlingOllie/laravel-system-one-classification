@@ -377,7 +377,12 @@ How the typing works:
     checkpoint revisions it reports and the whole encoded request body (context,
     every question as sent, so a choice's options and descriptions too, the
     request controls and the `model`), scoped to the connection name. A loaded
-    checkpoint with no revision (a local path) skips the cache. Entries are
+    checkpoint with no revision (a local path) skips the cache, and an answer
+    is stored only when the checkpoint it reports (`routing.model`) is one the
+    key holds a revision for, so a checkpoint loaded lazily by that very call,
+    or a host that reports no routing, is never cached. A checkpoint swapped
+    between the /health read and the decision (a restart in between) can
+    still be stored under the old revision; the TTL bounds that. Entries are
     `{status, body}` arrays, so stores that refuse to unserialize objects work;
     a hit is decoded again, with no latency. A store that throws, a /health
     that is refused or unreadable, and an entry that does not decode are

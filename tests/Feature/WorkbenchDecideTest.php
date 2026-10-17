@@ -179,7 +179,7 @@ it('answers a repeated decision from the cache with ?cache=1, and misses when a 
     config(['system-one.cache.store' => 'array']);
     Http::fake([
         '*/health' => Http::response(['revisions' => ['english' => 'rev-a']]),
-        '*/v1/systemone' => Http::response(['answers' => ['churn' => ['type' => 'noul', 'noul' => 0.7]]]),
+        '*/v1/systemone' => Http::response(['answers' => ['churn' => ['type' => 'noul', 'noul' => 0.7]], 'routing' => ['model' => 'english']]),
     ]);
     $posts = fn (): int => Http::recorded(fn (Request $request): bool => str_ends_with($request->url(), '/v1/systemone'))->count();
 

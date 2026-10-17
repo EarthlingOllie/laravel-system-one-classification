@@ -119,6 +119,24 @@ it('keys any context the transport is handed, invalid UTF-8 included, without fa
         ->and($cache->keys())->toHaveCount(2);
 });
 
+it('stores nothing answered by a checkpoint whose revision it did not key on', function (string $answer): void {
+    // A server that loads checkpoints lazily reports only english, then routes to multilingual
+    // and loads it: the key holds no multilingual revision, so the answer must not be kept.
+    $answered = new Response(200, $answer);
+    $transport = new ScriptedTransport([$answered, $answered], [healthWith(['english' => 'a']), healthWith(['english' => 'a'])]);
+    $cache = new ArrayResponseCache;
+    $client = new DecisionClient($transport, new SystemOneCodec, cache: $cache);
+
+    $client->decide(cachedChurnDecision());
+    $client->decide(cachedChurnDecision());
+
+    expect($transport->calls())->toBe(['GET /health', 'POST /v1/systemone', 'GET /health', 'POST /v1/systemone'])
+        ->and($cache->entries->count())->toBe(0);
+})->with([
+    'another checkpoint' => ['{"answers":{"churn":{"type":"noul","noul":0.5}},"routing":{"model":"multilingual"}}'],
+    'no routing reported' => ['{"answers":{"churn":{"type":"noul","noul":0.5}}}'],
+]);
+
 it('misses when the server has loaded another checkpoint since', function (): void {
     $cache = new ArrayResponseCache;
     $transport = new ScriptedTransport([churnAnswer(), churnAnswer()], [healthWith(['english' => 'a']), healthWith(['english' => 'a', 'multilingual' => 'b'])]);

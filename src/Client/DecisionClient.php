@@ -15,6 +15,7 @@ use EarthlingOllie\SystemOneClassification\Result\Result;
 use EarthlingOllie\SystemOneClassification\Transport\Response;
 use EarthlingOllie\SystemOneClassification\Transport\Transport;
 
+use function array_key_exists;
 use function hash;
 use function in_array;
 use function serialize;
@@ -43,7 +44,8 @@ final readonly class DecisionClient
      * With a cache, the client first reads the server's checkpoint revisions (GET /health) and
      * keys on them together with the whole request body: the context, every question as sent,
      * the request controls and the model. The cache is skipped when the server reports no
-     * revision for a loaded checkpoint, since its answers could then change under the same key.
+     * revision for a loaded checkpoint, since its answers could then change under the same key,
+     * and an answer is stored only when the checkpoint it reports (`routing.model`) is keyed.
      *
      * @throws InvalidDecision before anything is sent
      * @throws HostUnavailable
@@ -89,12 +91,15 @@ final readonly class DecisionClient
      */
     private function resolveCached(ResponseCache $cache, Decision $decision, array $body): array
     {
-        $key = $this->cacheKey($cache, $body);
+        $revisions = $this->revisions($cache);
 
-        if ($key === null) {
+        if ($revisions === null) {
             return [$this->send($decision, $body)[0], false];
         }
 
+        // serialize(), not json_encode(): it takes any bytes, so the key never fails a decision,
+        // and it keeps every value exactly (floats round-trip, strings byte for byte).
+        $key = hash('sha256', serialize(['revisions' => $revisions, 'request' => $body]));
         $hit = $cache->get($key);
 
         if ($hit !== null) {
@@ -106,7 +111,12 @@ final readonly class DecisionClient
         }
 
         [$result, $response] = $this->send($decision, $body);
-        $cache->put($key, $response);
+
+        // Kept only when the checkpoint that answered is one the key holds a revision for: a server
+        // that loads checkpoints lazily may route to one it had not loaded when /health was read.
+        if (array_key_exists($result->meta->checkpoint ?? '', $revisions)) {
+            $cache->put($key, $response);
+        }
 
         return [$result, false];
     }
@@ -127,12 +137,13 @@ final readonly class DecisionClient
     }
 
     /**
-     * @param  array<string, mixed>  $body  the encoded request
-     * @return ?string null when the cache is skipped for this decision
+     * The checkpoint revisions to key on, read from the server's /health.
+     *
+     * @return ?non-empty-array<array-key, string> null when the cache is skipped for this decision
      *
      * @throws HostUnavailable when the server cannot be reached, as the decision would fail the same way
      */
-    private function cacheKey(ResponseCache $cache, array $body): ?string
+    private function revisions(ResponseCache $cache): ?array
     {
         // Only an unreachable server makes the transport throw, and that fails the decision.
         $health = $this->transport->get(SystemOneCodec::HEALTH_PATH);
@@ -149,8 +160,7 @@ final readonly class DecisionClient
             return null;
         }
 
-        // serialize(), not json_encode(): it takes any bytes, so the key never fails a decision,
-        // and it keeps every value exactly (floats round-trip, strings byte for byte).
-        return hash('sha256', serialize(['revisions' => $revisions, 'request' => $body]));
+        /** @var non-empty-array<array-key, string> $revisions */
+        return $revisions;
     }
 }
