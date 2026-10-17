@@ -43,6 +43,9 @@ final readonly class SystemOneManager
     /** The model profiles a connection can name. */
     private const array PROFILES = ['laya', 'jev'];
 
+    /** The most retries a connection may ask for: more only stalls a decision against a host that is down. */
+    private const int MAX_RETRIES = 10;
+
     /** Milliseconds before the first retry when a connection sets `retries` but no `retry_delay`. */
     private const int DEFAULT_RETRY_DELAY = 200;
 
@@ -127,7 +130,7 @@ final readonly class SystemOneManager
             self::profile($name, $connection, $model),
             $model,
             new RetryPolicy(
-                self::wholeNumber($name, 'retries', $connection['retries'] ?? null, 0),
+                self::retries($name, $connection['retries'] ?? null),
                 self::wholeNumber($name, 'retry_delay', $connection['retry_delay'] ?? null, self::DEFAULT_RETRY_DELAY),
             ),
             $remote,
@@ -213,6 +216,20 @@ final readonly class SystemOneManager
         $model = trim((string) $model);
 
         return $model === '' ? null : $model;
+    }
+
+    /**
+     * `retries`: none when unset or empty, at most MAX_RETRIES.
+     *
+     * @return int<0, max>
+     *
+     * @throws InvalidConfiguration
+     */
+    private static function retries(string $name, mixed $value): int
+    {
+        $retries = self::wholeNumber($name, 'retries', $value, 0);
+
+        return $retries > self::MAX_RETRIES ? throw InvalidConfiguration::tooManyRetries($name, self::MAX_RETRIES) : $retries;
     }
 
     /**

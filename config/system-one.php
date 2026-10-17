@@ -29,7 +29,7 @@ declare(strict_types=1);
  *                built in), for Jev all of them. A list, or a comma-separated string.
  *   model        the model to ask when a decision pins none, such as 'english'; it is accepted
  *                as one of the connection's models. Empty lets the server choose.
- *   retries      how often to try again when the host cannot be reached or answers with a 5xx
+ *   retries      how often (at most 10) to try again when the host cannot be reached or answers with a 5xx
  *                (a 4xx is never retried); empty means none
  *   retry_delay  milliseconds to wait before the first retry, doubled before each further one
  *                (at most 30 s); empty means 200

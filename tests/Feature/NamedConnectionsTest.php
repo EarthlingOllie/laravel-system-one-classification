@@ -306,6 +306,19 @@ it('rejects retries or a retry delay that is not a whole number of zero or more'
         ->toThrow(InvalidConfiguration::class, "System One connection 'other' has a '{$key}' that is not a whole number of zero or more.");
 })->with(['retries', 'retry_delay'])->with(['negative' => -1, 'fraction' => 1.5, 'fraction string' => '1.5', 'words' => 'often', 'true' => true, 'list' => [[2]]]);
 
+// Review finding: a typo such as SYSTEM_ONE_RETRIES=2000000 was accepted, and one decision
+// against a host that is down would then wait for days.
+it('allows at most ten retries', function (): void {
+    config([
+        'system-one.connections.ten' => ['url' => 'http://ten.test', 'retries' => '10'],
+        'system-one.connections.eleven' => ['url' => 'http://eleven.test', 'retries' => 11],
+    ]);
+
+    expect(app(SystemOneManager::class)->configuration('ten')->retry->retries)->toBe(10)
+        ->and(fn () => SystemOne::connection('eleven'))
+        ->toThrow(InvalidConfiguration::class, "System One connection 'eleven' has 'retries' above 10.");
+});
+
 it("sends the connection's default model, held to its profile and accepted as one of its models", function (string $name, mixed $model, ?string $sent): void {
     config(["system-one.connections.{$name}.api_key" => NAMED_KEY, "system-one.connections.{$name}.model" => $model]);
     $requests = fakeAnswers();

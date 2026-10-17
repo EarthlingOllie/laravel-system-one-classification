@@ -60,6 +60,11 @@ final class InvalidConfiguration extends InvalidArgumentException implements Sys
         return new self("System One connection '{$name}' has a '{$key}' that is not a whole number of zero or more.");
     }
 
+    public static function tooManyRetries(string $name, int $max): self
+    {
+        return new self("System One connection '{$name}' has 'retries' above {$max}.");
+    }
+
     public static function invalidRemote(string $name): self
     {
         return new self("System One connection '{$name}' has a 'remote' that is not true or false.");
