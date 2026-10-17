@@ -15,6 +15,7 @@ use EarthlingOllie\SystemOneClassification\Protocol\SystemOneCodec;
 use EarthlingOllie\SystemOneClassification\Result\Result;
 use EarthlingOllie\SystemOneClassification\Result\ResultSet;
 use EarthlingOllie\SystemOneClassification\Transport\HttpTransport;
+use EarthlingOllie\SystemOneClassification\Transport\Redactor;
 use EarthlingOllie\SystemOneClassification\Transport\RetryPolicy;
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
 use Illuminate\Contracts\Config\Repository;
@@ -149,6 +150,35 @@ final readonly class SystemOneManager implements ConnectionResolver
             ),
             $remote,
         );
+    }
+
+    /**
+     * The name of the connection used when none is given (`system-one.default`).
+     *
+     * @throws InvalidConfiguration when it is not set
+     */
+    public function defaultConnection(): string
+    {
+        $name = $this->config->get('system-one.default');
+
+        if (! is_string($name)) {
+            throw InvalidConfiguration::noDefaultConnection();
+        }
+
+        return $name;
+    }
+
+    /**
+     * A connection's URL fit to print (the artisan commands): its userinfo, query values and
+     * API key masked (Redactor), as /connections shows it.
+     *
+     * @throws InvalidConfiguration when the connection is missing or malformed
+     */
+    public function displayUrl(?string $name = null): string
+    {
+        $config = $this->configuration($name);
+
+        return Redactor::forConnection($config->url, $config->apiKey())->redact($config->url);
     }
 
     /** Sends the decision to the default connection. */
@@ -372,21 +402,5 @@ final readonly class SystemOneManager implements ConnectionResolver
         }
 
         return $names;
-    }
-
-    /**
-     * The name of the connection decide() uses (`system-one.default`).
-     *
-     * @throws InvalidConfiguration when it is not set
-     */
-    private function defaultConnection(): string
-    {
-        $name = $this->config->get('system-one.default');
-
-        if (! is_string($name)) {
-            throw InvalidConfiguration::noDefaultConnection();
-        }
-
-        return $name;
     }
 }

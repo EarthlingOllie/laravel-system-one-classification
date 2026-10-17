@@ -13,6 +13,7 @@ use EarthlingOllie\SystemOneClassification\Exceptions\HostUnavailable;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidDecision;
 use EarthlingOllie\SystemOneClassification\Protocol\SystemOneCodec;
 use EarthlingOllie\SystemOneClassification\Result\Answer\YesNoAnswer;
+use EarthlingOllie\SystemOneClassification\Result\Health;
 use EarthlingOllie\SystemOneClassification\Tests\Support\ScriptedTransport;
 use EarthlingOllie\SystemOneClassification\Transport\HttpTransport;
 use EarthlingOllie\SystemOneClassification\Transport\Response;
@@ -73,6 +74,11 @@ function steppedClock(float ...$readings): Clock
             $this->readings->next();
 
             return $reading ?? throw new LogicException('The clock was read more often than expected.');
+        }
+
+        public function get(string $path): Response
+        {
+            return new Response(503, '{"detail":"server busy"}');
         }
     };
 }
@@ -190,3 +196,14 @@ it('sends nothing for a context that is not valid UTF-8', function (): void {
         $http->assertNothingSent();
     }
 })->throws(InvalidDecision::class, 'The context text is not valid UTF-8, which JSON requires.');
+it('asks the server for its health', function (): void {
+    $http = new Factory;
+    $http->fake(['*' => Factory::response(['status' => 'ok', 'loaded' => ['english'], 'revisions' => ['english' => null], 'device' => 'cpu'])]);
+
+    $health = (new DecisionClient(new HttpTransport($http, 'http://laya.test', 'k'), new SystemOneCodec))->health();
+
+    expect($health)->toEqual(new Health('ok', ['english'], ['english' => null], 'cpu'));
+    $http->assertSent(fn (Request $request): bool => $request->url() === 'http://laya.test/health'
+        && $request->method() === 'GET'
+        && $request->hasHeader('Authorization', 'Bearer k'));
+});

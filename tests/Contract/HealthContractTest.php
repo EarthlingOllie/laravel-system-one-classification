@@ -7,11 +7,13 @@ use EarthlingOllie\SystemOneClassification\Domain\Decision;
 use EarthlingOllie\SystemOneClassification\Domain\Question;
 use EarthlingOllie\SystemOneClassification\Model\LayaProfile;
 use EarthlingOllie\SystemOneClassification\Protocol\SystemOneCodec;
+use EarthlingOllie\SystemOneClassification\Result\Health;
 use EarthlingOllie\SystemOneClassification\Tests\Support\LayaFixtures;
 
 /*
  * What the result cache keys on besides the request: the checkpoint revisions laya-serve
- * reports on GET /health, and the `model` the request names.
+ * reports on GET /health, and the `model` the request names; and the whole health response
+ * system-one:health (#11) prints.
  */
 
 it('reads the recorded health response into its checkpoint revisions', function (): void {
@@ -30,4 +32,15 @@ it('encodes a model as the recorded request names it', function (): void {
 
     // A connection's default model counts as one of its models (#9), as the manager builds it.
     expect((new SystemOneCodec(new LayaProfile(extraModels: [$recorded['model']])))->encode($decision, $recorded['model']))->toBe($recorded);
+});
+
+it('decodes the recorded health response', function (): void {
+    $recorded = LayaFixtures::responseBody('health');
+
+    expect((new SystemOneCodec)->decodeHealth(LayaFixtures::response('health')))->toEqual(new Health(
+        'ok',
+        $recorded['loaded'],
+        $recorded['revisions'],
+        $recorded['device'],
+    ));
 });

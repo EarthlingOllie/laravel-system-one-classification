@@ -62,8 +62,8 @@ foreach (READONLY_CORE as $namespace) {
 /*
  * The Laravel layer holds the only stateful code (PLAN.md, Quality bar): the testing fake,
  * which records the decisions sent to it. Everything else there is readonly too, except the
- * classes that extend the framework's own (the service provider, the facade and
- * QuietHttpFactory, #9's event-free HTTP factory), which PHP
+ * classes that extend the framework's own (the service provider, the facade, #11's artisan
+ * commands and QuietHttpFactory, #9's event-free HTTP factory), which PHP
  * does not allow to be readonly.
  */
 const LARAVEL = PACKAGE.'\\Laravel';
@@ -78,7 +78,7 @@ arch(LARAVEL.' classes are readonly, but for the framework subclasses and the te
     ->expect(LARAVEL)
     ->classes()
     ->toBeReadonly()
-    ->ignoring([LARAVEL.'\\SystemOneServiceProvider', LARAVEL.'\\Facades', LARAVEL.'\\QuietHttpFactory', TESTING.'\\SystemOneFake']);
+    ->ignoring([LARAVEL.'\\SystemOneServiceProvider', LARAVEL.'\\Facades', LARAVEL.'\\QuietHttpFactory', LARAVEL.'\\Commands', TESTING.'\\SystemOneFake']);
 
 // Production code never reaches the fake: only SystemOne::fake() swaps it in.
 arch(TESTING.' is used only by the facade')

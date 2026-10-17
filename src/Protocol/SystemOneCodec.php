@@ -26,6 +26,7 @@ use EarthlingOllie\SystemOneClassification\Result\Answer\ScoreAnswer;
 use EarthlingOllie\SystemOneClassification\Result\Answer\YesNoAnswer;
 use EarthlingOllie\SystemOneClassification\Result\Confidence;
 use EarthlingOllie\SystemOneClassification\Result\Distribution;
+use EarthlingOllie\SystemOneClassification\Result\Health;
 use EarthlingOllie\SystemOneClassification\Result\Meta;
 use EarthlingOllie\SystemOneClassification\Result\Result;
 use EarthlingOllie\SystemOneClassification\Result\ResultSet;
@@ -249,34 +250,42 @@ final readonly class SystemOneCodec
      */
     public function decodeRevisions(Response $response): array
     {
-        self::failOnStatus($response);
+        return self::revisions(self::health($response)->revisions ?? null, $response->body);
+    }
 
-        // Decoded to objects, not arrays: `{"0": "abc"}` must stay an object, not become a list.
-        $root = json_decode($response->body);
+    /**
+     * Reads a `GET /health` response (laya-serve's; other servers may not have the route) for
+     * `system-one:health`: its status, loaded checkpoints, revisions (read as decodeRevisions()
+     * reads them, but none when the server reports none) and device.
+     *
+     * @throws HostUnavailable on a 5xx
+     * @throws RejectedByModel on a 4xx
+     * @throws MalformedResponse when the status or body is not what laya-serve sends
+     */
+    public function decodeHealth(Response $response): Health
+    {
+        $root = self::health($response);
+        $status = $root->status ?? null;
+        $loaded = $root->loaded ?? null;
+        $device = $root->device ?? null;
 
-        if (! $root instanceof stdClass) {
-            throw MalformedResponse::because('The health response is not a JSON object.', $response->body);
+        if (! is_string($status)) {
+            throw MalformedResponse::because("The health response has no string 'status'.", $response->body);
         }
 
-        $revisions = $root->revisions ?? null;
-
-        if (! $revisions instanceof stdClass) {
-            throw MalformedResponse::because("The health response has no 'revisions' object.", $response->body);
+        // A JSON list decodes to a PHP list even when objects are decoded as objects.
+        if ($loaded !== null && (! is_array($loaded) || ! self::allStrings($loaded))) {
+            throw MalformedResponse::because("The health response's 'loaded' is not a list of checkpoint names.", $response->body);
         }
 
-        $decoded = [];
-
-        foreach (get_object_vars($revisions) as $checkpoint => $revision) {
-            if ($revision !== null && ! is_string($revision)) {
-                throw MalformedResponse::because("The health response's revision for '{$checkpoint}' is not a string.", $response->body);
-            }
-
-            $decoded[$checkpoint] = $revision;
+        if ($device !== null && ! is_string($device)) {
+            throw MalformedResponse::because("The health response's 'device' is not a string.", $response->body);
         }
 
-        ksort($decoded, SORT_STRING);
+        $revisions = isset($root->revisions) ? self::revisions($root->revisions, $response->body) : [];
 
-        return $decoded;
+        /** @var list<string>|null $loaded */
+        return new Health($status, $loaded, $revisions, $device);
     }
 
     /**
@@ -299,6 +308,63 @@ final readonly class SystemOneCodec
         }
 
         return $entries;
+    }
+
+    /**
+     * The root object of a `GET /health` response, decoded to objects, not arrays: a revisions
+     * object keyed `"0"` must stay an object, not become a list.
+     *
+     * @throws HostUnavailable
+     * @throws RejectedByModel
+     * @throws MalformedResponse
+     */
+    private static function health(Response $response): stdClass
+    {
+        self::failOnStatus($response);
+        $root = json_decode($response->body);
+
+        if (! $root instanceof stdClass) {
+            throw MalformedResponse::because('The health response is not a JSON object.', $response->body);
+        }
+
+        return $root;
+    }
+
+    /**
+     * A health response's `revisions`, keyed and ordered by checkpoint name; `{}` or `[]` is none.
+     *
+     * @return array<array-key, ?string>
+     */
+    private static function revisions(mixed $revisions, string $body): array
+    {
+        // An empty JSON list holds no revisions either (PHP writes an empty array as `[]`).
+        if ($revisions === []) {
+            return [];
+        }
+
+        if (! $revisions instanceof stdClass) {
+            throw MalformedResponse::because("The health response has no 'revisions' object.", $body);
+        }
+
+        $decoded = [];
+
+        foreach (get_object_vars($revisions) as $checkpoint => $revision) {
+            if ($revision !== null && ! is_string($revision)) {
+                throw MalformedResponse::because("The health response's revision for '{$checkpoint}' is not a string.", $body);
+            }
+
+            $decoded[$checkpoint] = $revision;
+        }
+
+        ksort($decoded, SORT_STRING);
+
+        return $decoded;
+    }
+
+    /** @param  array<mixed>  $values */
+    private static function allStrings(array $values): bool
+    {
+        return array_filter($values, is_string(...)) === $values;
     }
 
     /**
