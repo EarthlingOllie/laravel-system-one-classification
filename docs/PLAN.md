@@ -396,9 +396,10 @@ How the typing works:
 - `SystemOne::fake([...])` returns scripted answers and lets tests assert on the
   decisions that were sent. Built in #10:
   - `SystemOne::fake([FakeAnswer::…])` swaps `Laravel\Testing\SystemOneFake` in behind
-    the facade and the container (`SystemOneManager` and the new
-    `Laravel\ConnectionResolver` interface, which the provider aliases to the manager's
-    binding: inject `ConnectionResolver`, not the final manager, to stay fakeable).
+    the facade, whose accessor is the new `Laravel\ConnectionResolver` interface (aliased
+    to the manager's singleton). Inject `ConnectionResolver` to stay fakeable: the final
+    `SystemOneManager` itself stays the real manager under the fake (it could not be
+    swapped for a fake without a `TypeError`).
     `SystemOne::connection()` returns a `Client\Decider` (the interface `DecisionClient`
     implements); under the fake it is a `Laravel\Testing\FakeConnection`.
   - Typed helpers, generic over the question's enum: `FakeAnswer::yesNo($q, 0.91)`,
@@ -406,7 +407,8 @@ How the typing works:
     among the other options, so below 1/n is an `InvalidFakeAnswer`) and
     `FakeAnswer::score($q, Case, expected: 1.7)` (default: the case's value; the case
     blended with the fewest levels that move the mean there, so the case stays the most
-    likely level, and an expected level it cannot reach is an `InvalidFakeAnswer`). They
+    likely level, ties going to the lowest as in the codec; an expected level it cannot
+    reach that way is an `InvalidFakeAnswer`). They
     build the real `YesNoAnswer`/`ChoiceAnswer`/`ScoreAnswer`; the raw `confidence` is
     Laya's formula (1 − normalised entropy) tagged with the connection's `profile`.
   - Scripts match by `Domain\Question\HandleIdentity`, the identity `Result::get()` now
@@ -415,8 +417,9 @@ How the typing works:
     certain), or after `->strict()` an `UnscriptedQuestion` naming any same-key script and
     what differs.
   - The fake encodes each decision with `SystemOneCodec` first, so it refuses (and does
-    not record) what the real client refuses. A connection must exist in config, but its
-    URL, key and timeout are not checked: the fake never connects.
+    not record) what the real client refuses; and it has the real manager build each
+    connection's client (which connects to nothing), so a connection config the real
+    client refuses is refused under the fake too.
   - `assertDecided(fn (Decision, string $connection): bool)`, `assertDecidedTimes(n)`,
     `assertNothingDecided()` and `assertAsked($question)` (some result reads that handle).
     They use PHPUnit's `Assert`, which an app's test suite always has.
@@ -434,8 +437,9 @@ How the typing works:
       the fake should check limits through the same codec call it already makes.
     - #9 named connections: `connection()` already works under the fake for any
       configured name. If #9 adds methods to the client, `Decider` and `FakeConnection`
-      need them; the fake should keep not requiring a remote connection's key, so tests
-      need no secrets.
+      need them. Since the fake checks connections through the manager, #9's "remote
+      connection with no key" error will apply under the fake too: decide then whether
+      tests should set a dummy key (faithful) or the fake should skip that check.
 - Events: `DecisionMade` and `DecisionFailed`. Logging the context text is off
   by default, because it may contain PII.
 - Optional result caching through Laravel's cache, keyed on the decision, the
