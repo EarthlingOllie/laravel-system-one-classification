@@ -20,10 +20,10 @@ use Illuminate\Console\Command;
  */
 
 /**
- * Members a snippet may reach that are not the package's: Pest's, and those of the app code the
- * snippets imagine (a ticket model, a triage service).
+ * Members a snippet may reach that are not the package's: PHPUnit's, and those of the app code
+ * the snippets imagine (a ticket model, the TicketTriage service).
  */
-const README_FOREIGN_MEMBERS = ['askAHuman', 'body', 'escalate', 'queue', 'subject', 'toBe', 'triage'];
+const README_FOREIGN_MEMBERS = ['askAHuman', 'assertSame', 'body', 'escalate', 'queue', 'subject', 'systemOne', 'triage'];
 
 it('covers every topic issue #13 asks for, each under its own heading', function (string $heading): void {
     expect(Readme::load()->text)->toMatch('/^#{2,3} '.preg_quote($heading, '/').'$/m');
@@ -186,8 +186,8 @@ it('names only options the commands have, in prose and in brackets too', functio
         $options = [...$options, ...array_keys($command->getDefinition()->getOptions())];
     }
 
-    // Other tools' options the README uses: artisan's own, vendor:publish's, docker's.
-    $foreign = ['no-interaction', 'tag', 'wait', 'secret'];
+    // Other tools' options the README uses: artisan's own, vendor:publish's, composer's, docker's.
+    $foreign = ['no-interaction', 'tag', 'dev', 'wait', 'secret'];
     preg_match_all('/(?<![\w-])--([a-z][a-z-]*)/', Readme::load()->text, $matches);
 
     foreach (array_unique($matches[1]) as $option) {

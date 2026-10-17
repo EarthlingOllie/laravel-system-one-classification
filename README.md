@@ -78,7 +78,7 @@ It asks where the server should run. `--mode=standalone` or `--mode=sail` skips 
 **Standalone** (the default) is for an app that runs on your machine, for example with `php artisan serve`:
 
 1. It publishes `config/system-one.php`.
-2. It writes `compose.system-one.yaml` into the app. The build context points at the package's `docker/laya` inside `vendor/`.
+2. It writes `compose.system-one.yaml` into the app. Its build context points at the installed package's `docker/laya`.
 3. It sets `SYSTEM_ONE_URL=http://localhost:8000` in `.env`.
 
 Then start the server and check it:
@@ -90,14 +90,14 @@ php artisan system-one:health
 
 The first start builds the image and downloads the checkpoint, which can take a while (see [Troubleshooting](#troubleshooting)). `--wait` returns once the checkpoint is loaded. The Compose project is named `system-one`, so every app on your machine that uses this file shares one server on port 8000, and one copy of the weights.
 
-**Sail** is for an app that runs in [Laravel Sail](https://laravel.com/docs/sail). Run `php artisan sail:install` first.
+**Sail** is for an app that runs in [Laravel Sail](https://laravel.com/docs/sail). A new Laravel 13 app doesn't include Sail, so set it up first with `composer require laravel/sail --dev` and `php artisan sail:install`.
 
 ```bash
 php artisan system-one:install --mode=sail
 ```
 
 1. It publishes `config/system-one.php`.
-2. It adds a `laya` service (on the `sail` network, when the file has one) and a `sail-laya` volume for the weights to your Sail Compose file (`compose.yaml`, or whichever of `compose.yml`, `docker-compose.yaml` and `docker-compose.yml` you have). The new lines are appended, and the existing ones are left untouched.
+2. It adds a `laya` service (on the `sail` network, when the file has one) and a `sail-laya` volume for the weights to your Sail Compose file (`compose.yaml`, or whichever of `compose.yml`, `docker-compose.yaml` and `docker-compose.yml` you have). It only inserts new lines, under `services:` and `volumes:`, and leaves every existing line as it is.
 3. It sets `SYSTEM_ONE_URL=http://laya:8000` in `.env`, so the `laravel.test` container reaches it by its service name.
 
 ```bash
@@ -457,7 +457,53 @@ Every exception the package throws implements `EarthlingOllie\SystemOneClassific
 
 `SystemOne::fake()` swaps in a fake that answers from scripted answers instead of a model, and records every decision so you can assert on them. Nothing is sent anywhere, so tests need no server.
 
+Say the app triages tickets in a class that injects `ConnectionResolver`:
+
 ```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Support;
+
+use App\Enums\Department;
+use App\Enums\Urgency;
+use EarthlingOllie\SystemOneClassification\Domain\Context;
+use EarthlingOllie\SystemOneClassification\Domain\Decision;
+use EarthlingOllie\SystemOneClassification\Domain\Question;
+use EarthlingOllie\SystemOneClassification\Laravel\ConnectionResolver;
+
+final readonly class TicketTriage
+{
+    public function __construct(private ConnectionResolver $systemOne) {}
+
+    /** 'escalate', the department to send the ticket to, or 'review' for a person to decide. */
+    public function triage(string $ticket): string
+    {
+        $department = Question::choice('department', Department::class, 'Which department should handle this?');
+        $urgency = Question::score('urgency', Urgency::class, 'How urgent is this?');
+        $churn = Question::yesNo('churn', 'Does the customer threaten to cancel or leave?');
+
+        $result = $this->systemOne->decide(Decision::about(Context::text($ticket))->ask($department, $urgency, $churn));
+
+        if ($result->get($churn)->isYes(0.8) || $result->get($urgency)->expected >= Urgency::High->value) {
+            return 'escalate';
+        }
+
+        $answer = $result->get($department);
+
+        return $answer->isConfident(0.8) ? $answer->value->value : 'review';
+    }
+}
+```
+
+A feature test then scripts the answers and asserts on what was decided:
+
+```php
+<?php
+
+namespace Tests\Feature;
+
 use App\Enums\Department;
 use App\Enums\Urgency;
 use App\Support\TicketTriage;
@@ -465,25 +511,42 @@ use EarthlingOllie\SystemOneClassification\Domain\Decision;
 use EarthlingOllie\SystemOneClassification\Domain\Question;
 use EarthlingOllie\SystemOneClassification\Laravel\Facades\SystemOne;
 use EarthlingOllie\SystemOneClassification\Laravel\Testing\FakeAnswer;
+use Tests\TestCase;
 
-it('escalates a billing ticket that threatens to cancel', function () {
-    $department = Question::choice('department', Department::class, 'Which department should handle this?');
-    $urgency = Question::score('urgency', Urgency::class, 'How urgent is this?');
-    $churn = Question::yesNo('churn', 'Does the customer threaten to cancel or leave?');
+final class TicketTriageTest extends TestCase
+{
+    public function test_it_escalates_a_billing_ticket_that_threatens_to_cancel(): void
+    {
+        $department = Question::choice('department', Department::class, 'Which department should handle this?');
+        $urgency = Question::score('urgency', Urgency::class, 'How urgent is this?');
+        $churn = Question::yesNo('churn', 'Does the customer threaten to cancel or leave?');
 
-    $fake = SystemOne::fake([
-        FakeAnswer::choice($department, Department::Billing, confidence: 0.92),
-        FakeAnswer::score($urgency, Urgency::High, expected: 1.7),
-        FakeAnswer::yesNo($churn, 0.91),
-    ]);
+        $fake = SystemOne::fake([
+            FakeAnswer::choice($department, Department::Billing, confidence: 0.92),
+            FakeAnswer::score($urgency, Urgency::Medium, expected: 1.2),
+            FakeAnswer::yesNo($churn, 0.91),
+        ]);
 
-    expect(app(TicketTriage::class)->triage('Refund me or we cancel.'))->toBe('escalate');
+        $this->assertSame('escalate', app(TicketTriage::class)->triage('Refund me or we cancel.'));
 
-    $fake->assertDecidedTimes(1);
-    $fake->assertAsked($department);
-    $fake->assertDecided(fn (Decision $decision, string $connection): bool => $connection === 'local');
-});
+        $fake->assertDecidedTimes(1);
+        $fake->assertAsked($department);
+        $fake->assertDecided(fn (Decision $decision, string $connection): bool => $connection === 'local');
+    }
+
+    public function test_it_sends_a_calm_billing_ticket_to_billing(): void
+    {
+        $fake = SystemOne::fake([
+            FakeAnswer::choice(Question::choice('department', Department::class, 'Which department should handle this?'), Department::Billing, confidence: 0.92),
+        ]);
+
+        // Unscripted questions get a certain default: here, the lowest urgency and "no".
+        $this->assertSame('billing', app(TicketTriage::class)->triage('Where can I download my invoice?'));
+    }
+}
 ```
+
+With Pest, the same lines go in an `it('escalates ...', function () { ... })`.
 
 **Scripted answers.** Each helper builds the same answer type the real client returns:
 
@@ -515,16 +578,7 @@ SystemOne::fake([FakeAnswer::yesNo($churn, 0.91)])->strict();
 - Named connections work: `SystemOne::connection('jev')->decide()` is answered by the fake and recorded with the name `jev`. A remote connection needs no API key under the fake, because nothing is sent.
 - `decideMany()` records each context as one decision. Its `ResultSet` has no `usage`, and every result's `meta` is empty (all null).
 
-**Inject `ConnectionResolver`**, not `SystemOneManager`, in your app code. The container resolves the interface to the fake once `SystemOne::fake()` has swapped it in. `SystemOneManager` is final and always stays the real manager:
-
-```php
-use EarthlingOllie\SystemOneClassification\Laravel\ConnectionResolver;
-
-final readonly class TicketTriage
-{
-    public function __construct(private ConnectionResolver $systemOne) {}
-}
-```
+**Inject `ConnectionResolver`**, not `SystemOneManager`, in your app code, as `TicketTriage` does. The container resolves the interface to the fake once `SystemOne::fake()` has swapped it in. `SystemOneManager` is final and always stays the real manager. The `SystemOne` facade works under the fake too.
 
 As with Laravel's other fakes, anything that resolved the interface before `fake()` was called keeps the real one. `system-one:try` uses the fake in an app's tests, and `system-one:health` always reads the real server.
 
@@ -566,8 +620,8 @@ Identical decisions can be answered from a Laravel cache store instead of the se
 
 ```dotenv
 SYSTEM_ONE_CACHE=true
-# A store from config/cache.php; empty uses the default store.
-SYSTEM_ONE_CACHE_STORE=redis
+# A store from config/cache.php, such as redis or file; empty uses the default store.
+SYSTEM_ONE_CACHE_STORE=
 # Seconds; empty means an hour.
 SYSTEM_ONE_CACHE_TTL=3600
 ```
@@ -611,7 +665,7 @@ It exits 1 when the server is unreachable or unhealthy, and 2 when the connectio
 php artisan system-one:try "Refund the double charge or we cancel." --yes-no="Does the customer threaten to cancel?"
 php artisan system-one:try --file=ticket.txt --choice="App\Enums\Department:Which department should handle this?" --score="App\Enums\Urgency:How urgent is this?"
 cat ticket.txt | php artisan system-one:try --yes-no="Is this a complaint?" --json
-php artisan system-one:try "Kündigen Sie meinen Vertrag." --yes-no="Does the customer want to cancel?" --connection=laya-hosted
+php artisan system-one:try "Kündigen Sie meinen Vertrag." --yes-no="Does the customer want to cancel?" --connection=laya-hosted   # needs SYSTEM_ONE_LAYA_HOSTED_API_KEY
 ```
 
 - The text comes from the argument, `--file`, or stdin.
@@ -667,6 +721,8 @@ docker compose -f compose.system-one.yaml -f vendor/earthlingollie/laravel-syste
 **The first decision about non-English text is slow.** Text the server detects as non-English is routed to the multilingual checkpoint, which is downloaded and loaded on first use when it isn't in `LAYA_MODELS`. Preload it with `LAYA_MODELS=english,multilingual`, or pin `withModel('english')`.
 
 **`HostUnavailable`.** The server isn't running, is still loading, or is busy: laya-serve answers 503 when it is saturated, and the client retries. Check `php artisan system-one:health`. If decisions time out on a slow machine, raise `SYSTEM_ONE_TIMEOUT`.
+
+**`Could not resolve host: laya` with Sail.** `http://laya:8000` resolves only inside Sail's network, so run the commands and examples through Sail: `./vendor/bin/sail artisan system-one:health`, `./vendor/bin/sail php vendor/earthlingollie/laravel-system-one-classification/examples/yes-no.php`.
 
 **`RejectedByModel` with HTTP 401.** The server runs with `LAYA_API_KEY`, and `SYSTEM_ONE_API_KEY` is missing or different.
 
