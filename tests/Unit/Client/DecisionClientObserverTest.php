@@ -42,6 +42,15 @@ it('tells the observer a decision came from the cache', function (): void {
     expect(array_map(fn (array $call): mixed => $call[3] ?? null, $observer->calls->getArrayCopy()))->toBe([false, true]);
 });
 
+it('tells the observer a decision sent because the cache was skipped was not cached', function (): void {
+    $observer = new RecordingObserver;
+    $transport = new ScriptedTransport([new Response(200, '{"answers":{"churn":{"type":"noul","noul":0.4}}}')], [new Response(200, '{"revisions":{"english":null}}')]);
+
+    (new DecisionClient($transport, new SystemOneCodec, cache: new ArrayResponseCache, observer: $observer))->decide(observedDecision());
+
+    expect($observer->calls[0][3] ?? null)->toBeFalse();
+});
+
 it('tells the observer about a failed decision and rethrows the same exception', function (ScriptedTransport $transport, Decision $decision, string $type): void {
     $observer = new RecordingObserver;
 

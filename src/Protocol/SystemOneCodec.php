@@ -103,7 +103,7 @@ final readonly class SystemOneCodec
      * and ordered by checkpoint name. A checkpoint loaded without a known revision (from a local
      * path, say) reads as null, and a server with nothing loaded yet reports none.
      *
-     * @return array<string, ?string>
+     * @return array<array-key, ?string> a checkpoint named like a whole number gets an int key, as in any PHP array
      *
      * @throws HostUnavailable on a 5xx
      * @throws RejectedByModel on a 4xx, such as a host with no /health
@@ -125,7 +125,7 @@ final readonly class SystemOneCodec
                 throw MalformedResponse::because("The health response's revision for '{$checkpoint}' is not a string.", $response->body);
             }
 
-            $decoded[(string) $checkpoint] = $revision;
+            $decoded[$checkpoint] = $revision;
         }
 
         ksort($decoded, SORT_STRING);
