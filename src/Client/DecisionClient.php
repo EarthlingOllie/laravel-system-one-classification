@@ -44,8 +44,8 @@ final readonly class DecisionClient
      * batch endpoint. The decision's own context is not sent; Decision::withContext() gives the
      * decision each context is asked as.
      *
-     * More than SystemOneCodec::MAX_BATCH_STATES contexts go out as several requests, one after
-     * another; the results come back in the order of the contexts either way. Every request is
+     * More than SystemOneCodec::MAX_BATCH_STATES contexts, or contexts too long for one
+     * SystemOneCodec::MAX_BATCH_BODY_BYTES body, go out as several requests, one after another; the results come back in the order of the contexts either way. Every request is
      * encoded before the first is sent. If a request fails, its exception is raised and no later
      * request is sent.
      *

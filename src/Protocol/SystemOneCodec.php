@@ -20,7 +20,6 @@ use EarthlingOllie\SystemOneClassification\Result\ResultSet;
 use EarthlingOllie\SystemOneClassification\Result\Usage;
 use EarthlingOllie\SystemOneClassification\Transport\Response;
 
-use function array_chunk;
 use function array_is_list;
 use function array_map;
 use function count;
@@ -30,6 +29,7 @@ use function is_int;
 use function is_string;
 use function json_decode;
 use function json_encode;
+use function strlen;
 
 /**
  * Maps a Decision to the System One wire format (`POST /v1/systemone`, shared by laya-serve
@@ -52,6 +52,13 @@ final readonly class SystemOneCodec
     public const int MAX_BATCH_STATES = 64;
 
     /**
+     * The largest request body laya-serve reads: its MAX_BODY_BYTES (2 MiB), above which it
+     * answers 413 before parsing. 64 states under its 50,000-character limit can still add up
+     * to more, so encodeBatches() also splits a batch whose body would not fit.
+     */
+    public const int MAX_BATCH_BODY_BYTES = 2 * 1024 * 1024;
+
+    /**
      * @return array{state: string, questions: array<string, array<string, mixed>>}
      *
      * @throws InvalidDecision
@@ -72,10 +79,13 @@ final readonly class SystemOneCodec
     }
 
     /**
-     * The batch requests that ask the decision's questions about each context: one body per
-     * MAX_BATCH_STATES contexts, in order. Each body is what encode() builds for the decision,
-     * with its `state` replaced by the `states` of its contexts, so decide() and decideMany()
-     * send the questions and every request setting the same way.
+     * The batch requests that ask the decision's questions about each context, in order. A
+     * request takes as many of the next contexts as fit both MAX_BATCH_STATES and, encoded as
+     * the HTTP client sends it, MAX_BATCH_BODY_BYTES; a context too large to fit even alone
+     * goes in a request of its own, for the server to refuse as decide() would. Each body is
+     * what encode() builds for the decision, with its `state` replaced by the `states` of its
+     * contexts, so decide() and decideMany() send the questions and every request setting the
+     * same way.
      *
      * Every request is encoded before any is returned, so a batch with one bad context sends
      * nothing.
@@ -110,7 +120,7 @@ final readonly class SystemOneCodec
 
         return array_map(
             static fn (array $chunk): array => ['states' => $chunk, ...$shared],
-            array_chunk($states, self::MAX_BATCH_STATES),
+            self::chunk($states, self::jsonBytes(['states' => [], ...$shared])),
         );
     }
 
@@ -161,6 +171,48 @@ final readonly class SystemOneCodec
         }
 
         return new ResultSet($decoded, self::usage($body['total_usage'] ?? null, $response->body));
+    }
+
+    /**
+     * Splits the states, in order, into chunks that fit one batch request each.
+     *
+     * @param  non-empty-list<string>  $states
+     * @param  int  $overhead  the bytes of the body around its `states` list
+     * @return non-empty-list<non-empty-list<string>>
+     */
+    private static function chunk(array $states, int $overhead): array
+    {
+        $chunks = [];
+        $chunk = [];
+        $bytes = $overhead;
+
+        foreach ($states as $state) {
+            $size = self::jsonBytes($state);
+
+            // One more state also adds the comma before it.
+            if ($chunk !== [] && (count($chunk) === self::MAX_BATCH_STATES || $bytes + 1 + $size > self::MAX_BATCH_BODY_BYTES)) {
+                $chunks[] = $chunk;
+                $chunk = [];
+                $bytes = $overhead;
+            }
+
+            $bytes += ($chunk === [] ? 0 : 1) + $size;
+            $chunk[] = $state;
+        }
+
+        $chunks[] = $chunk;
+
+        return $chunks;
+    }
+
+    /**
+     * The bytes a value takes in a request body. HttpTransport's client encodes with
+     * json_encode()'s default flags, so this is the size it sends; those flags escape slashes
+     * and non-ASCII characters, so no other choice of flags would send more.
+     */
+    private static function jsonBytes(mixed $value): int
+    {
+        return strlen(json_encode($value, JSON_THROW_ON_ERROR));
     }
 
     /**

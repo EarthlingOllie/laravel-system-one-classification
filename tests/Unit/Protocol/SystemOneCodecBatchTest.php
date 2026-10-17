@@ -75,6 +75,67 @@ it('caps a batch request at laya-serve MAX_BATCH_STATES', function (): void {
         ->and(SystemOneCodec::BATCH_PATH)->toBe('/v1/systemone/batch');
 });
 
+it('caps a batch request body at laya-serve MAX_BODY_BYTES', function (): void {
+    expect(SystemOneCodec::MAX_BATCH_BODY_BYTES)->toBe(2 * 1024 * 1024);
+});
+
+/** The JSON bytes a body goes out as: what the HTTP client sends (json_encode, default flags). */
+function batchBodyBytes(array $body): int
+{
+    return strlen(json_encode($body, JSON_THROW_ON_ERROR));
+}
+
+it('splits long contexts into requests that each fit the server body limit, in order', function (): void {
+    // 64 states of 40,000 characters: each under laya-serve's 50,000, together about 2.5 MB.
+    $texts = array_map(static fn (int $i): string => str_pad("Ticket {$i} ", 40_000, 'x'), range(1, 64));
+
+    $bodies = (new SystemOneCodec)->encodeBatches(batchDecision(), array_map(Context::text(...), $texts));
+
+    expect(count($bodies))->toBe(2)
+        ->and(array_map(batchBodyBytes(...), $bodies))->each->toBeLessThanOrEqual(SystemOneCodec::MAX_BATCH_BODY_BYTES)
+        ->and(array_merge(...array_column($bodies, 'states')))->toBe($texts);
+});
+
+it('fills a request up to exactly the body limit and starts another one byte past it', function (bool $afterAnother, int $extra, array $sizes): void {
+    $codec = new SystemOneCodec;
+    $empty = $codec->encodeBatches(batchDecision(), [Context::text('x')])[0];
+    $empty['states'] = [];
+    // Four states add their quoted texts and three commas to the body around them.
+    $first = str_repeat('a', 1_000_000);
+    $second = str_repeat('b', 500_000);
+    $third = str_repeat('c', 250_000);
+    $fourth = str_repeat('d', SystemOneCodec::MAX_BATCH_BODY_BYTES - batchBodyBytes($empty) - strlen($first) - strlen($second) - strlen($third) - 11 + $extra);
+    // A state too large to share a request fills one of its own first, so the four start the next.
+    $lead = $afterAnother ? [str_repeat('h', SystemOneCodec::MAX_BATCH_BODY_BYTES)] : [];
+
+    $bodies = $codec->encodeBatches(batchDecision(), array_map(Context::text(...), [...$lead, $first, $second, $third, $fourth]));
+
+    expect(array_map(static fn (array $body): int => count($body['states']), $bodies))->toBe($sizes)
+        ->and(batchBodyBytes($bodies[count($lead)]))->toBeLessThanOrEqual(SystemOneCodec::MAX_BATCH_BODY_BYTES);
+})->with([
+    'exactly the limit' => [false, 0, [4]],
+    'one byte over' => [false, 1, [3, 1]],
+    'exactly the limit, in a later request' => [true, 0, [1, 4]],
+    'one byte over, in a later request' => [true, 1, [1, 3, 1]],
+]);
+
+it('measures a state as the HTTP client encodes it, escaped Unicode included', function (): void {
+    // 200,000 "é" are 400,000 UTF-8 bytes but 1,200,000 once json_encode escapes them as \u00e9.
+    $text = str_repeat('é', 200_000);
+
+    $bodies = (new SystemOneCodec)->encodeBatches(batchDecision(), [Context::text($text), Context::text($text)]);
+
+    expect(array_map(static fn (array $body): int => count($body['states']), $bodies))->toBe([1, 1]);
+});
+
+it('sends a state too large for any request on its own, for the server to refuse', function (): void {
+    $huge = str_repeat('h', SystemOneCodec::MAX_BATCH_BODY_BYTES);
+
+    $bodies = (new SystemOneCodec)->encodeBatches(batchDecision(), [Context::text($huge), Context::text('Small'), Context::text($huge)]);
+
+    expect(array_column($bodies, 'states'))->toBe([[$huge], ['Small'], [$huge]]);
+});
+
 it('refuses an empty list of contexts', function (): void {
     (new SystemOneCodec)->encodeBatches(batchDecision(), []);
 })->throws(InvalidDecision::class, 'decideMany() needs at least one context.');
