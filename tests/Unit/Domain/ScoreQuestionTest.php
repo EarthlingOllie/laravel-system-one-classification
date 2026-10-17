@@ -47,6 +47,12 @@ it('orders the levels by backing value, not by the order the cases are declared 
     ]);
 });
 
+// Review finding 8: the one list both the request and the legend check use.
+it('gives the level descriptions as the criteria the server reads, lowest level first', function (): void {
+    expect(Question::score('severity', Severity::class, 'How severe is this?')->criteria())
+        ->toBe(['a cosmetic issue', 'a feature is broken', 'the service is down']);
+});
+
 it('prefers DescribesCases over the #[Describe] attribute', function (): void {
     expect(Question::score('severity', TranslatedSeverity::class, 'Wie dringend?')->levels())->toBe([
         ['case' => TranslatedSeverity::Low, 'value' => 1, 'description' => 'kann warten'],

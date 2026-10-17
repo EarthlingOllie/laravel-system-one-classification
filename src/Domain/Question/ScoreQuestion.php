@@ -8,6 +8,7 @@ use BackedEnum;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidDecision;
 use EarthlingOllie\SystemOneClassification\Result\Answer\ScoreAnswer;
 
+use function array_column;
 use function enum_exists;
 use function is_int;
 use function is_subclass_of;
@@ -82,6 +83,17 @@ final readonly class ScoreQuestion implements QuestionHandle
     public function levels(): array
     {
         return $this->levels;
+    }
+
+    /**
+     * The level descriptions, lowest level first: what goes out as `criteria`, since the
+     * server knows levels only by index, and what the answer's `legend` must give back.
+     *
+     * @return non-empty-list<string>
+     */
+    public function criteria(): array
+    {
+        return array_column($this->levels, 'description');
     }
 
     public function answerType(): string

@@ -151,7 +151,7 @@ final readonly class SystemOneCodec
                 'request' => static fn (): array => [
                     'type' => 'score',
                     'instructions' => $question->instructions,
-                    'criteria' => array_column($question->levels(), 'description'),
+                    'criteria' => $question->criteria(),
                 ],
                 'decode' => fn (array $answer, string $body): ScoreAnswer => $this->decodeScore($question, $answer, $body),
             ],
@@ -339,7 +339,7 @@ final readonly class SystemOneCodec
             throw MalformedResponse::because("The answer for '{$question->key}' has no 'legend' object.", $body);
         }
 
-        $expected = array_column($question->levels(), 'description');
+        $expected = $question->criteria();
         $sorted = $legend;
         ksort($sorted);
 
