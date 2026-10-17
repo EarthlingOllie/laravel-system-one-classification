@@ -12,7 +12,11 @@ use EarthlingOllie\SystemOneClassification\Exceptions\RejectedByModel;
 use EarthlingOllie\SystemOneClassification\Laravel\Facades\SystemOne;
 use EarthlingOllie\SystemOneClassification\Laravel\SystemOneManager;
 use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\Department;
+use Illuminate\Http\Client\Events\ConnectionFailed;
+use Illuminate\Http\Client\Events\RequestSending;
+use Illuminate\Http\Client\Events\ResponseReceived;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
 
@@ -118,6 +122,45 @@ it('refuses to send a remote key over plain http to another machine', function (
             ->and($sent)->toHaveCount(0);
     }
 })->with(['http://jev.test', 'http://localhost.jev.test', 'http://127.jev.test', 'http://128.0.0.1', 'ftp://jev.test', 'jev.test', 'http:///nohost']);
+
+// Review finding: Laravel's HTTP client dispatches RequestSending, ResponseReceived and
+// ConnectionFailed with the whole request, Authorization header included, to any listener.
+it('dispatches no HTTP client event, so no listener ever sees the key', function (): void {
+    config(['system-one.connections.jev' => [...config('system-one.connections.jev'), 'api_key' => NAMED_KEY, 'retries' => 1]]);
+    $seen = [];
+    Event::listen([RequestSending::class, ResponseReceived::class, ConnectionFailed::class], function (object $event) use (&$seen): void {
+        $seen[] = $event::class;
+    });
+    Http::fake(['*' => Http::sequence()->pushFailedConnection('refused')->push(['answers' => ['churn' => ['type' => 'noul', 'noul' => 0.9]]])->push('ok')]);
+
+    SystemOne::connection('jev')->decide(namedDecision());
+    // An app's own requests still dispatch them.
+    Http::get('https://example.test');
+
+    expect($seen)->toBe([RequestSending::class, ResponseReceived::class]);
+    // Http::fake() still sees the package's requests, the key included.
+    Http::assertSent(fn (Request $request): bool => $request->header('Authorization') === ['Bearer '.NAMED_KEY]);
+});
+
+it("keeps the application's global HTTP middleware, options and stray-request guard", function (): void {
+    Http::globalRequestMiddleware(fn ($request) => $request->withHeader('X-App', 'mine'));
+    Http::globalOptions(['headers' => ['X-Option' => 'set']]);
+    Http::preventStrayRequests();
+    Http::allowStrayRequests(['http://allowed.test/*']);
+    Http::fake(['http://faked.test/*' => Http::response(['answers' => ['churn' => ['type' => 'noul', 'noul' => 0.9]]])]);
+    config([
+        'system-one.connections.faked' => ['url' => 'http://faked.test'],
+        'system-one.connections.stray' => ['url' => 'http://stray.test'],
+        'system-one.connections.allowed' => ['url' => 'http://allowed.test', 'timeout' => 1],
+    ]);
+
+    SystemOne::connection('faked')->decide(namedDecision());
+
+    Http::assertSent(fn (Request $request): bool => $request->header('X-App') === ['mine'] && $request->header('X-Option') === ['set']);
+    expect(fn () => SystemOne::connection('stray')->decide(namedDecision()))->toThrow(RuntimeException::class, 'Attempted request to [http://stray.test/v1/systemone] without a matching fake.')
+        // Allowed through for real: nothing listens there, so it cannot be reached.
+        ->and(fn () => SystemOne::connection('allowed')->decide(namedDecision()))->toThrow(HostUnavailable::class, 'could not be reached');
+});
 
 it('keeps the key out of every exception, however it fails', function (): void {
     config(['system-one.connections.jev' => [...config('system-one.connections.jev'), 'api_key' => NAMED_KEY, 'retries' => 0]]);

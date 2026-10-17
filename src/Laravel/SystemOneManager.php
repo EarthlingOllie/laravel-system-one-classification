@@ -66,7 +66,7 @@ final readonly class SystemOneManager
         }
 
         return new DecisionClient(
-            new HttpTransport($this->http, $config->url, $config->apiKey(), $config->timeout, $config->retry, new LaravelSleeper),
+            new HttpTransport(new QuietHttpFactory($this->http), $config->url, $config->apiKey(), $config->timeout, $config->retry, new LaravelSleeper),
             new SystemOneCodec($config->profile),
             model: $config->model,
         );
