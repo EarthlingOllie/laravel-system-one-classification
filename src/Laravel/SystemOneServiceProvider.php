@@ -36,7 +36,8 @@ final class SystemOneServiceProvider extends ServiceProvider
         ]);
     }
 
-    private static function configFile(): string
+    /** The package's config/system-one.php, which the app's copy is published from. */
+    public static function configFile(): string
     {
         return dirname(__DIR__, 2).'/config/system-one.php';
     }

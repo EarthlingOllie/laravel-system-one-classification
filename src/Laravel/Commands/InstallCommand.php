@@ -7,6 +7,7 @@ namespace EarthlingOllie\SystemOneClassification\Laravel\Commands;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidConfiguration;
 use EarthlingOllie\SystemOneClassification\Laravel\Install\ComposeFiles;
 use EarthlingOllie\SystemOneClassification\Laravel\Install\EnvFile;
+use EarthlingOllie\SystemOneClassification\Laravel\SystemOneServiceProvider;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Foundation\Application;
@@ -73,7 +74,7 @@ final class InstallCommand extends Command
         }
 
         $files->ensureDirectoryExists(dirname($target));
-        $files->copy(dirname(__DIR__, 3).'/config/system-one.php', $target);
+        $files->copy(SystemOneServiceProvider::configFile(), $target);
         $this->info('Published config/system-one.php');
     }
 
