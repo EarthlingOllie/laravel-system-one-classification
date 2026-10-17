@@ -9,16 +9,26 @@ use EarthlingOllie\SystemOneClassification\Domain\Decision;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidConfiguration;
 use EarthlingOllie\SystemOneClassification\Model\JevProfile;
 use EarthlingOllie\SystemOneClassification\Model\LayaProfile;
+use EarthlingOllie\SystemOneClassification\Model\ModelProfile;
 use EarthlingOllie\SystemOneClassification\Protocol\SystemOneCodec;
 use EarthlingOllie\SystemOneClassification\Result\Result;
 use EarthlingOllie\SystemOneClassification\Transport\HttpTransport;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Http\Client\Factory;
 
+use function array_filter;
+use function array_is_list;
+use function array_map;
+use function array_values;
+use function explode;
+use function filter_var;
 use function implode;
 use function is_array;
+use function is_bool;
 use function is_numeric;
+use function is_scalar;
 use function is_string;
+use function trim;
 
 /**
  * What the SystemOne facade resolves to: builds a DecisionClient per configured connection
@@ -53,7 +63,6 @@ final readonly class SystemOneManager
         $url = $connection['url'] ?? null;
         $apiKey = $connection['api_key'] ?? null;
         $timeout = $connection['timeout'] ?? '';
-        $profile = $connection['profile'] ?? '';
 
         if (! is_string($url) || $url === '') {
             throw InvalidConfiguration::missingUrl($name);
@@ -72,20 +81,9 @@ final readonly class SystemOneManager
             throw InvalidConfiguration::invalidTimeout($name);
         }
 
-        // Like the timeout, an unset or empty profile means the default: Laya.
-        if ($profile === '') {
-            $profile = 'laya';
-        }
-
-        $profile = match ($profile) {
-            'laya' => new LayaProfile,
-            'jev' => new JevProfile,
-            default => throw InvalidConfiguration::unknownProfile($name, implode(', ', self::PROFILES)),
-        };
-
         return new DecisionClient(
             new HttpTransport($this->http, $url, $apiKey, (float) $timeout),
-            new SystemOneCodec($profile),
+            new SystemOneCodec(self::profile($name, $connection)),
         );
     }
 
@@ -93,6 +91,73 @@ final readonly class SystemOneManager
     public function decide(Decision $decision): Result
     {
         return $this->connection()->decide($decision);
+    }
+
+    /**
+     * The connection's model profile, from its `profile`, `tournament_grouping` and `models`.
+     *
+     * @param  array<mixed>  $connection
+     *
+     * @throws InvalidConfiguration
+     */
+    private static function profile(string $name, array $connection): ModelProfile
+    {
+        // Like the timeout, an unset or empty profile means the default: Laya.
+        $profile = $connection['profile'] ?? '';
+        $models = self::models($name, $connection['models'] ?? []);
+
+        return match ($profile) {
+            '', 'laya' => new LayaProfile(self::tournamentGrouping($name, $connection['tournament_grouping'] ?? false), $models),
+            'jev' => new JevProfile($models),
+            default => throw InvalidConfiguration::unknownProfile($name, implode(', ', self::PROFILES)),
+        };
+    }
+
+    /**
+     * true or false, or an env() string such as '1', 'true', 'on', '0', 'false' or ''.
+     *
+     * @throws InvalidConfiguration
+     */
+    private static function tournamentGrouping(string $name, mixed $value): bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        $value = is_scalar($value) ? filter_var($value, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) : null;
+
+        return $value ?? throw InvalidConfiguration::invalidTournamentGrouping($name);
+    }
+
+    /**
+     * A list of model names, or a comma-separated string of them (SYSTEM_ONE_MODELS). Empty
+     * entries of the string are dropped, so '' and null mean none.
+     *
+     * @return list<string>
+     *
+     * @throws InvalidConfiguration
+     */
+    private static function models(string $name, mixed $models): array
+    {
+        if ($models === null) {
+            return [];
+        }
+
+        if (is_string($models)) {
+            return array_values(array_filter(array_map(trim(...), explode(',', $models)), static fn (string $model): bool => $model !== ''));
+        }
+
+        if (! is_array($models) || ! array_is_list($models)) {
+            throw InvalidConfiguration::invalidModels($name);
+        }
+
+        foreach ($models as $model) {
+            if (! is_string($model) || trim($model) === '') {
+                throw InvalidConfiguration::invalidModels($name);
+            }
+        }
+
+        return $models;
     }
 
     private function defaultConnection(): string
