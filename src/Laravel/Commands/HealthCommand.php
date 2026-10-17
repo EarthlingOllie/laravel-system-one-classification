@@ -24,6 +24,9 @@ use function is_string;
  * reached or is not healthy (a 5xx, a refusal, an unexpected answer, or another status), and
  * 2 when the connection itself is not configured. Everything printed about the connection
  * goes through Transport\Redactor, so no URL credential or API key reaches the terminal.
+ *
+ * It always probes the real server (SystemOneManager), also under SystemOne::fake(): a health
+ * check of a fake would say nothing about the host.
  */
 final class HealthCommand extends Command
 {

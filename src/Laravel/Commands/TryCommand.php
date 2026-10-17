@@ -16,6 +16,7 @@ use EarthlingOllie\SystemOneClassification\Exceptions\InvalidConfiguration;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidDecision;
 use EarthlingOllie\SystemOneClassification\Exceptions\MalformedResponse;
 use EarthlingOllie\SystemOneClassification\Exceptions\RejectedByModel;
+use EarthlingOllie\SystemOneClassification\Laravel\ConnectionResolver;
 use EarthlingOllie\SystemOneClassification\Laravel\SystemOneManager;
 use EarthlingOllie\SystemOneClassification\Result\Answer\Answer;
 use EarthlingOllie\SystemOneClassification\Result\Answer\ChoiceAnswer;
@@ -90,7 +91,11 @@ final class TryCommand extends Command
         $this->isTerminal = $isTerminal ?? stream_isatty(...);
     }
 
-    public function handle(SystemOneManager $manager): int
+    /**
+     * @param  SystemOneManager  $manager  names the connection and its URL
+     * @param  ConnectionResolver  $systemOne  decides, so an app test's SystemOne::fake() answers
+     */
+    public function handle(SystemOneManager $manager, ConnectionResolver $systemOne): int
     {
         // A bare `--yes-no` arrives as null: refused below like any blank question.
         $instructions = array_map(static fn (?string $value): string => $value ?? '', $this->option('yes-no'));
@@ -131,7 +136,7 @@ final class TryCommand extends Command
 
             $decision = Decision::about(Context::text($text))->ask(...$questions);
             $name = is_string($option) ? $option : $manager->defaultConnection();
-            $client = $manager->connection($name);
+            $client = $systemOne->connection($name);
         } catch (InvalidDecision|InvalidConfiguration $invalid) {
             $this->problem($invalid->getMessage());
 

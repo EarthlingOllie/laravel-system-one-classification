@@ -2,7 +2,11 @@
 
 declare(strict_types=1);
 
+use EarthlingOllie\SystemOneClassification\Domain\Decision;
+use EarthlingOllie\SystemOneClassification\Domain\Question;
 use EarthlingOllie\SystemOneClassification\Laravel\Commands\TryCommand;
+use EarthlingOllie\SystemOneClassification\Laravel\Facades\SystemOne;
+use EarthlingOllie\SystemOneClassification\Laravel\Testing\FakeAnswer;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Http\Client\Request;
@@ -408,3 +412,16 @@ it('exits with 2 for a decision the connection refuses before sending', function
     'text that is not UTF-8' => [['text' => "caf\xE9", '--yes-no' => ['Cancel?']], 'The context text is not valid UTF-8'],
     'a choice over more options than the profile allows' => [['--choice' => ['Workbench\\App\\Enums\\Topic:Which topic?']], "Choice question 'q1' has 101 options"],
 ]);
+
+// Review finding: injected code is fakeable only through ConnectionResolver (#10).
+it('answers from SystemOne::fake() in an app test, which then sees the decision', function (): void {
+    Http::fake();
+    $fake = SystemOne::fake([FakeAnswer::yesNo(Question::yesNo('q1', 'Cancel?'), 0.9)]);
+
+    $this->artisan('system-one:try', ['text' => 'We will cancel.', '--yes-no' => ['Cancel?']])
+        ->expectsOutput('  value: yes (probability 0.9, threshold 0.5)')
+        ->assertExitCode(Command::SUCCESS);
+
+    $fake->assertDecided(fn (Decision $decision): bool => $decision->context->state === 'We will cancel.');
+    Http::assertNothingSent();
+});
