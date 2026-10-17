@@ -87,26 +87,41 @@ final readonly class Redactor
     }
 
     /**
-     * A response body with every credential masked. A JSON body has each string in it
-     * redacted and stays JSON with the same structure, so a `detail` can still be read out of
-     * it (redacting the raw text could swallow the closing quote along with a URL's query
-     * value); anything else is redacted as text.
+     * A response body with what the request sent masked: the connection's secrets, and the
+     * userinfo and query values of any URL the server echoes. The patterns for secret-looking
+     * pairs and bearer tokens are left out here: they are meant for the HTTP client's own error
+     * text, and in a server's message they mangle its wording ("invalid or missing bearer
+     * token") while a key the server echoes is the connection's, masked anyway.
+     *
+     * A JSON body has each string in it masked and stays JSON with the same structure, so a
+     * `detail` can still be read out of it (masking the raw text could swallow the closing
+     * quote along with a URL's query value); anything else is masked as text.
      */
     public function redactBody(string $body): string
     {
         try {
             $decoded = json_decode($body, flags: JSON_THROW_ON_ERROR);
         } catch (JsonException) {
-            return $this->redact($body);
+            return $this->redactEchoed($body);
         }
 
         return json_encode($this->redactStrings($decoded), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION | JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR);
     }
 
+    /** The text with the secrets and URL credentials masked; all of it if a pattern fails to run. */
+    private function redactEchoed(string $text): string
+    {
+        return preg_replace(
+            [self::USERINFO, self::URL_QUERY_VALUE],
+            ['$1'.self::MASK.'@', self::MASK],
+            str_replace($this->secrets, self::MASK, $text),
+        ) ?? self::MASK;
+    }
+
     private function redactStrings(mixed $value): mixed
     {
         if (is_string($value)) {
-            return $this->redact($value);
+            return $this->redactEchoed($value);
         }
 
         if (is_array($value)) {
