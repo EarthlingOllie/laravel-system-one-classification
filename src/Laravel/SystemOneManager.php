@@ -136,7 +136,8 @@ final readonly class SystemOneManager
 
     /**
      * A boolean setting as config files and env() write it: true/false, or a string such as
-     * '1', 'on' or 'false'. Missing or null means the default.
+     * '1', 'on' or 'false'. Missing, null or empty (`SYSTEM_ONE_EVENTS=`) means the default, as
+     * for every other setting.
      *
      * @throws InvalidConfiguration
      */
@@ -144,7 +145,7 @@ final readonly class SystemOneManager
     {
         $value = $this->config->get("system-one.{$setting}");
 
-        if ($value === null) {
+        if ($value === null || $value === '') {
             return $default;
         }
 

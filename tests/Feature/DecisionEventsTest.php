@@ -180,6 +180,7 @@ it('reads the event flags as booleans, as env() and config files write them', fu
     }
 })->with([
     'missing keys keep the defaults' => [null, null, true, false],
+    'empty values keep the defaults, as SYSTEM_ONE_EVENTS= writes them' => ['', '', true, false],
     'strings' => ['true', '1', true, true],
     'off as a string' => ['0', 'false', false, false],
     'on, without context' => [true, 'off', true, false],

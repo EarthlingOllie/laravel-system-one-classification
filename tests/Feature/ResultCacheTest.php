@@ -147,8 +147,8 @@ it('stores the status and body under a key scoped to the connection', function (
         ->and(json_decode(is_array($entry) && is_string($entry['body']) ? $entry['body'] : '', true)['answers'] ?? null)->toBe(['churn' => ['type' => 'noul', 'noul' => 0.1]]);
 });
 
-it('stays off when the enabled setting is missing', function (): void {
-    config(['system-one.cache.enabled' => null]);
+it('stays off when the enabled setting is missing or empty', function (?string $enabled): void {
+    config(['system-one.cache.enabled' => $enabled]);
     fakeServer();
 
     SystemOne::decide(ticket());
@@ -156,7 +156,7 @@ it('stays off when the enabled setting is missing', function (): void {
 
     expect(decisionsSent())->toBe(2);
     Http::assertNotSent(fn (Request $request): bool => str_ends_with($request->url(), '/health'));
-});
+})->with(['missing' => [null], 'empty, as SYSTEM_ONE_CACHE= writes it' => ['']]);
 
 it('accepts a TTL of one second', function (): void {
     config(['system-one.cache.ttl' => 1]);
