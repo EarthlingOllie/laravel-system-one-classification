@@ -317,7 +317,7 @@ final readonly class SystemOneCodec
                     'instructions' => $question->instructions,
                     'criteria' => self::criteria($question),
                 ],
-                'decode' => fn (array $answer, string $body, bool $gated): ChoiceAnswer => $this->decodeChoice($question, $answer, $body),
+                'decode' => fn (array $answer, string $body, bool $gated): ChoiceAnswer => $this->decodeChoice($question, $answer, $body, $gated),
             ],
             $question instanceof ScoreQuestion => [
                 'request' => static fn (): array => [
@@ -325,7 +325,7 @@ final readonly class SystemOneCodec
                     'instructions' => $question->instructions,
                     'criteria' => $question->criteria(),
                 ],
-                'decode' => fn (array $answer, string $body, bool $gated): ScoreAnswer => $this->decodeScore($question, $answer, $body),
+                'decode' => fn (array $answer, string $body, bool $gated): ScoreAnswer => $this->decodeScore($question, $answer, $body, $gated),
             ],
             $question instanceof YesNoQuestion => [
                 'request' => static fn (): array => ['type' => 'noul', 'instructions' => $question->instructions],
@@ -515,9 +515,10 @@ final readonly class SystemOneCodec
      *
      * @param  ChoiceQuestion<TEnum>  $question
      * @param  array<mixed>  $answer
+     * @param  bool  $gated  whether the decision set a minimum confidence
      * @return ChoiceAnswer<TEnum>
      */
-    private function decodeChoice(ChoiceQuestion $question, array $answer, string $body): ChoiceAnswer
+    private function decodeChoice(ChoiceQuestion $question, array $answer, string $body, bool $gated): ChoiceAnswer
     {
         $key = $question->key;
         self::checkType($key, $answer, 'choice', $body);
@@ -554,6 +555,7 @@ final readonly class SystemOneCodec
             self::answerConfidence($key, $answer, $distribution->probabilityOf($chosen), $body),
             $confidence,
             $distribution,
+            ...self::decodeAbstention($key, $answer, $body, $gated),
         );
     }
 
@@ -562,9 +564,10 @@ final readonly class SystemOneCodec
      *
      * @param  ScoreQuestion<TEnum>  $question
      * @param  array<mixed>  $answer
+     * @param  bool  $gated  whether the decision set a minimum confidence
      * @return ScoreAnswer<TEnum>
      */
-    private function decodeScore(ScoreQuestion $question, array $answer, string $body): ScoreAnswer
+    private function decodeScore(ScoreQuestion $question, array $answer, string $body, bool $gated): ScoreAnswer
     {
         $key = $question->key;
         self::checkType($key, $answer, 'score', $body);
@@ -620,6 +623,7 @@ final readonly class SystemOneCodec
             self::answerConfidence($key, $answer, $highest, $body),
             $confidence,
             $distribution,
+            ...self::decodeAbstention($key, $answer, $body, $gated),
         );
     }
 
