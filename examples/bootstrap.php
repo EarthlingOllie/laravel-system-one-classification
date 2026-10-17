@@ -23,9 +23,13 @@ if ($root !== false && is_file("{$root}/artisan") && is_file("{$root}/bootstrap/
     $app = require "{$root}/bootstrap/app.php";
     assert($app instanceof Application);
     $app->make(Kernel::class)->bootstrap();
-} else {
+} elseif (is_file(dirname(__DIR__).'/vendor/autoload.php')) {
     require dirname(__DIR__).'/vendor/autoload.php';
     Testbench::create();
+} else {
+    fwrite(STDERR, "Run the examples from your Laravel app's root, as php vendor/earthlingollie/laravel-system-one-classification/examples/<name>.php, or from a clone of the package after composer install.\n");
+
+    exit(1);
 }
 
 require_once __DIR__.'/Enums/Department.php';
