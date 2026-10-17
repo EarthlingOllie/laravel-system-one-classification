@@ -17,7 +17,7 @@ use EarthlingOllie\SystemOneClassification\Transport\Transport;
 
 use function hash;
 use function in_array;
-use function json_encode;
+use function serialize;
 
 /** Sends decisions to one host and returns typed results. One client per connection. */
 final readonly class DecisionClient
@@ -149,6 +149,8 @@ final readonly class DecisionClient
             return null;
         }
 
-        return hash('sha256', json_encode(['revisions' => $revisions, 'request' => $body], JSON_THROW_ON_ERROR));
+        // serialize(), not json_encode(): it takes any bytes, so the key never fails a decision,
+        // and it keeps every value exactly (floats round-trip, strings byte for byte).
+        return hash('sha256', serialize(['revisions' => $revisions, 'request' => $body]));
     }
 }

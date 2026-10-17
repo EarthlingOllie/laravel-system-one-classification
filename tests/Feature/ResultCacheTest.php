@@ -139,7 +139,7 @@ it('stores the status and body under a key scoped to the connection', function (
     SystemOne::decide(ticket());
 
     $request = (new SystemOneCodec)->encode(ticket());
-    $key = hash('sha256', json_encode(['revisions' => ['english' => 'rev-a'], 'request' => $request], JSON_THROW_ON_ERROR));
+    $key = hash('sha256', serialize(['revisions' => ['english' => 'rev-a'], 'request' => $request]));
     $entry = Cache::store('array')->get('system-one:'.hash('sha256', "local\0{$key}"));
     expect($entry)->toBeArray()
         ->and(array_keys((array) $entry))->toBe(['status', 'body'])

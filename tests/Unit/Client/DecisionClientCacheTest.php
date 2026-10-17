@@ -83,7 +83,7 @@ it('keys on a hash of the checkpoint revisions and the whole request body, model
 
     $request = (new SystemOneCodec)->encode($decision, 'english');
     expect($request)->toHaveKey('model', 'english')
-        ->and($cache->keys())->toBe([hash('sha256', json_encode(['revisions' => ['english' => 'rev-a'], 'request' => $request], JSON_THROW_ON_ERROR))]);
+        ->and($cache->keys())->toBe([hash('sha256', serialize(['revisions' => ['english' => 'rev-a'], 'request' => $request]))]);
 });
 
 it('stores a decision under a new key when anything it sends or the revision differs', function (?string $model, Decision $decision, string $revision): void {
@@ -104,6 +104,20 @@ it('stores a decision under a new key when anything it sends or the revision dif
     'revision' => [null, cachedChurnDecision(), 'rev-b'],
     'question' => [null, Decision::about(Context::text('We will cancel.'))->ask(Question::yesNo('churn', 'Do they cancel?')), 'rev-a'],
 ]);
+
+it('keys any context the transport is handed, invalid UTF-8 included, without failing the decision', function (): void {
+    // Context::text() does not check the encoding; the cache must not be what makes such a decision fail.
+    $transport = new ScriptedTransport([churnAnswer(), churnAnswer(0.2)], [healthWith(), healthWith(), healthWith()]);
+    $cache = new ArrayResponseCache;
+    $client = new DecisionClient($transport, new SystemOneCodec, cache: $cache);
+
+    $client->decide(cachedChurnDecision("Latin-1 caf\xE9"));
+    $client->decide(cachedChurnDecision("Latin-1 caf\xE9"));
+    $client->decide(cachedChurnDecision("Latin-1 caf\xE8"));
+
+    expect($transport->calls())->toBe(['GET /health', 'POST /v1/systemone', 'GET /health', 'GET /health', 'POST /v1/systemone'])
+        ->and($cache->keys())->toHaveCount(2);
+});
 
 it('misses when the server has loaded another checkpoint since', function (): void {
     $cache = new ArrayResponseCache;
