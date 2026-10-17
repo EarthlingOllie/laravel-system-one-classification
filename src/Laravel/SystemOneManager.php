@@ -76,6 +76,7 @@ final readonly class SystemOneManager implements ConnectionResolver
     public function connection(?string $name = null): DecisionClient
     {
         $config = $this->configuration($name);
+        $settings = $this->settings();
 
         if ($config->remote && ! $config->hasApiKey()) {
             throw InvalidConfiguration::missingApiKey($config->name);
@@ -85,15 +86,16 @@ final readonly class SystemOneManager implements ConnectionResolver
             new HttpTransport(new QuietHttpFactory($this->http), $config->url, $config->apiKey(), $config->timeout, $config->retry, new LaravelSleeper),
             new SystemOneCodec($config->profile),
             model: $config->model,
-            cache: $this->responseCache($config->name),
-            observer: $this->observer($config->name, $config->model),
+            cache: $settings['cache'] === null ? null : new StoreResponseCache($this->cache, $this->exceptions, $config->name, ...$settings['cache']),
+            observer: $settings['events'] ? new DispatchesDecisionEvents($this->events, $config->name, $config->model, $settings['includeContext']) : null,
         );
     }
 
     /**
      * A named connection's config, or the default one's, checked as connection() checks it
      * except for the API key a remote connection needs: what a stand-in for the host (the
-     * testing fake) checks, since it sends nothing.
+     * testing fake) checks, since it sends nothing. The package-wide event and cache settings
+     * every connection's client uses are checked too.
      *
      * @throws InvalidConfiguration when the connection is missing or malformed
      */
@@ -136,6 +138,7 @@ final readonly class SystemOneManager implements ConnectionResolver
         }
 
         $model = self::model($name, $connection['model'] ?? null);
+        $this->settings();
 
         return new ConnectionConfig(
             $name,
@@ -198,21 +201,21 @@ final readonly class SystemOneManager implements ConnectionResolver
         return $this->connection()->decideMany($contexts, $decision);
     }
 
-    /** @throws InvalidConfiguration */
-    private function observer(string $connection, ?string $model): ?DispatchesDecisionEvents
+    /**
+     * The package-wide `events` and `cache` settings, checked: whether to dispatch events and
+     * with the context, and the cache's store and TTL, or null when the cache is off.
+     *
+     * @return array{events: bool, includeContext: bool, cache: array{store: ?string, ttl: positive-int}|null}
+     *
+     * @throws InvalidConfiguration
+     */
+    private function settings(): array
     {
-        if (! $this->setting('events.enabled', true)) {
-            return null;
-        }
+        $events = $this->setting('events.enabled', true);
+        $includeContext = $this->setting('events.include_context', false);
 
-        return new DispatchesDecisionEvents($this->events, $connection, $model, $this->setting('events.include_context', false));
-    }
-
-    /** @throws InvalidConfiguration */
-    private function responseCache(string $connection): ?StoreResponseCache
-    {
         if (! $this->setting('cache.enabled', false)) {
-            return null;
+            return ['events' => $events, 'includeContext' => $includeContext, 'cache' => null];
         }
 
         $store = $this->config->get('system-one.cache.store');
@@ -229,7 +232,7 @@ final readonly class SystemOneManager implements ConnectionResolver
             throw InvalidConfiguration::invalidCacheTtl();
         }
 
-        return new StoreResponseCache($this->cache, $this->exceptions, $connection, $store === '' ? null : $store, $ttl);
+        return ['events' => $events, 'includeContext' => $includeContext, 'cache' => ['store' => $store === '' ? null : $store, 'ttl' => $ttl]];
     }
 
     /**

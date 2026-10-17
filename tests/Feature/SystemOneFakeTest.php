@@ -443,3 +443,18 @@ it('refuses in decideMany() what the real client refuses, recording nothing', fu
     'not a context' => [[Context::text('a'), 'b'], 'Context 1 of the batch is string, not a Context'],
     'text that is not UTF-8' => [[Context::text('a'), Context::text("tw\xB1ce")], 'The context text is not valid UTF-8'],
 ]);
+
+// Review finding: #12's event and cache settings are part of what the real client refuses.
+it('refuses event and cache settings the real client refuses', function (array $settings, string $message): void {
+    config($settings);
+    $fake = SystemOne::fake();
+
+    expect(fn (): mixed => SystemOne::decide(aboutTicket()->ask(fakeChurn())))->toThrow(InvalidConfiguration::class, $message)
+        ->and(fn (): mixed => app(SystemOneManager::class)->connection())->toThrow(InvalidConfiguration::class, $message);
+    $fake->assertNothingDecided();
+})->with([
+    'events.enabled' => [['system-one.events.enabled' => 'maybe'], "config/system-one.php has a 'events.enabled' that is not a boolean."],
+    'events.include_context' => [['system-one.events.include_context' => 'maybe'], "config/system-one.php has a 'events.include_context' that is not a boolean."],
+    'cache.ttl' => [['system-one.cache.enabled' => true, 'system-one.cache.ttl' => 'abc'], "config/system-one.php has a 'cache.ttl' that is not a whole number of seconds above zero."],
+    'cache.store' => [['system-one.cache.enabled' => true, 'system-one.cache.store' => ['redis']], "config/system-one.php has a 'cache.store' that is not a store name."],
+]);
