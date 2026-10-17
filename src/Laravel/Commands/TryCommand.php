@@ -24,6 +24,7 @@ use EarthlingOllie\SystemOneClassification\Result\Answer\YesNoAnswer;
 use EarthlingOllie\SystemOneClassification\Result\Meta;
 use EarthlingOllie\SystemOneClassification\Result\Result;
 use Illuminate\Console\Command;
+use ReflectionClass;
 
 use function array_map;
 use function count;
@@ -40,8 +41,6 @@ use function max;
 use function round;
 use function stream_get_contents;
 use function stream_isatty;
-use function strrchr;
-use function substr;
 
 /**
  * `php artisan system-one:try "text" --yes-no="Does the customer threaten to cancel?"`: asks
@@ -292,7 +291,7 @@ final class TryCommand extends Command
             $distribution = [];
 
             foreach ($answer->distribution->entries() as ['case' => $case, 'probability' => $probability]) {
-                $distribution[(string) $case->value] = $probability;
+                $distribution[$case->value] = $probability;
             }
 
             $answers[$question->key] = [
@@ -343,9 +342,7 @@ final class TryCommand extends Command
     /** @param class-string $class */
     private static function shortName(string $class): string
     {
-        $last = strrchr('\\'.$class, '\\');
-
-        return substr((string) $last, 1);
+        return new ReflectionClass($class)->getShortName();
     }
 
     /** Prints $message as an error on stderr, so stdout carries only the answers (valid JSON under --json). */

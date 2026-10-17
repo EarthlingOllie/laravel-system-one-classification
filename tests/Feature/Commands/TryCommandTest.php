@@ -355,3 +355,38 @@ it('refuses a --choice or --score that does not name a backed enum, sending noth
     'blank instructions' => [['--choice' => [TRY_DEPARTMENT.':  ']], "Question 'q1' needs instructions."],
     'a string-backed score' => [['--score' => [TRY_DEPARTMENT.':How urgent?']], 'Department'],
 ]);
+
+it('keeps a colon in the instructions of a --choice', function (): void {
+    fakeMixedAnswers();
+
+    $this->artisan('system-one:try', ['text' => 'x', '--yes-no' => ['Cancel?'], '--choice' => [TRY_DEPARTMENT.':Department: which one?']])
+        ->expectsOutput('q2 (choice over Department): Department: which one?')
+        ->assertExitCode(Command::SUCCESS);
+});
+
+it('names only the option at fault when a --choice names no enum', function (): void {
+    Http::fake();
+    $command = new TryCommand;
+    $command->setLaravel(app());
+    $tester = new CommandTester($command);
+
+    $tester->execute(['text' => 'x', '--choice' => ['Which department?']], ['interactive' => false, 'capture_stderr_separately' => true]);
+
+    expect($tester->getStatusCode())->toBe(Command::INVALID)
+        ->and(trim($tester->getErrorOutput()))->toBe("--choice needs an enum class before a colon, as in --choice=\"App\\Enums\\Department:Which department?\"; got 'Which department?'.");
+});
+
+it('rounds a score\'s expected level in the JSON to 12 decimals', function (): void {
+    Http::fake(['*' => Http::response(['answers' => ['q1' => [
+        'type' => 'score', 'score' => 1.9, 'confidence' => 0.1, 'legend' => ['can wait', 'soon', 'today', 'blocking'],
+        // Not normalised (the server rounds each probability), so the mean is 1.7 / 0.9.
+        'probabilities' => ['0' => 0.1, '1' => 0.2, '2' => 0.3, '3' => 0.3],
+    ]]])]);
+    $command = new TryCommand;
+    $command->setLaravel(app());
+    $tester = new CommandTester($command);
+
+    $tester->execute(['text' => 'x', '--score' => [TRY_URGENCY.':How urgent?'], '--json' => true]);
+
+    expect(json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR)['answers']['q1']['expected'])->toBe(1.888888888889);
+});
