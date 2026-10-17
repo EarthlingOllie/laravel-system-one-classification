@@ -49,7 +49,7 @@ final class SystemOne extends Facade
     public static function fake(array $answers = []): SystemOneFake
     {
         $app = self::getFacadeApplication() ?? throw InvalidConfiguration::noApplication();
-        $fake = new SystemOneFake($app->make(Repository::class), $answers);
+        $fake = new SystemOneFake($app->make(Repository::class), $app->make(SystemOneManager::class), $answers);
         self::swap($fake);
 
         return $fake;

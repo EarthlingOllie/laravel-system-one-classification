@@ -12,6 +12,7 @@ use EarthlingOllie\SystemOneClassification\Exceptions\InvalidDecision;
 use EarthlingOllie\SystemOneClassification\Exceptions\UnknownQuestion;
 use EarthlingOllie\SystemOneClassification\Exceptions\UnscriptedQuestion;
 use EarthlingOllie\SystemOneClassification\Laravel\ConnectionResolver;
+use EarthlingOllie\SystemOneClassification\Laravel\SystemOneManager;
 use EarthlingOllie\SystemOneClassification\Protocol\SystemOneCodec;
 use EarthlingOllie\SystemOneClassification\Result\Answer\Answer;
 use EarthlingOllie\SystemOneClassification\Result\Result;
@@ -22,7 +23,6 @@ use PHPUnit\Framework\Assert;
 use function array_filter;
 use function array_reverse;
 use function count;
-use function is_array;
 use function is_string;
 
 /**
@@ -33,9 +33,9 @@ use function is_string;
  *   identity Result::get() reads by). A question with no script gets FakeAnswer::unscripted(),
  *   or, once strict(), an UnscriptedQuestion.
  * - A decision the real client would refuse (no questions, an unknown question type) is
- *   refused the same way, and not recorded. Connections must exist in config/system-one.php,
- *   as they must for the real client, but nothing else in them is read except the profile,
- *   which tags each answer's raw confidence ('laya' when unset or empty).
+ *   refused the same way, and not recorded. So is a connection: the real SystemOneManager
+ *   checks it, though nothing is ever sent to it. Its profile tags each answer's raw
+ *   confidence ('laya' when unset or empty).
  *
  * The only stateful class of the package (docs/PLAN.md, Quality bar).
  */
@@ -54,6 +54,7 @@ final class SystemOneFake implements ConnectionResolver, Fake
      */
     public function __construct(
         private readonly Repository $config,
+        private readonly SystemOneManager $manager,
         array $answers = [],
     ) {
         // The last script given for a question wins.
@@ -77,13 +78,10 @@ final class SystemOneFake implements ConnectionResolver, Fake
             throw InvalidConfiguration::noDefaultConnection();
         }
 
-        $connection = $this->config->get("system-one.connections.{$name}");
-
-        if (! is_array($connection)) {
-            throw InvalidConfiguration::unknownConnection($name);
-        }
-
-        $profile = $connection['profile'] ?? null;
+        // The real manager checks the connection (building its client connects to nothing), so a
+        // config the real client refuses is refused here too, by the same rules.
+        $this->manager->connection($name);
+        $profile = $this->config->get("system-one.connections.{$name}.profile");
 
         return new FakeConnection($this, $name, is_string($profile) && $profile !== '' ? $profile : 'laya');
     }

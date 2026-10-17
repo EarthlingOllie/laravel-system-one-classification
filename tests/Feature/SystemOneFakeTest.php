@@ -240,6 +240,18 @@ it('refuses a connection that is not configured, as the real client does', funct
     SystemOne::connection('typo');
 })->throws(InvalidConfiguration::class, "System One connection 'typo' is not configured in config/system-one.php.");
 
+it('refuses a connection the real client would refuse, so tests catch broken config', function (array $connection, string $message): void {
+    config(['system-one.connections.broken' => $connection]);
+    SystemOne::fake();
+
+    expect(fn (): mixed => SystemOne::connection('broken'))->toThrow(InvalidConfiguration::class, $message);
+})->with([
+    'a misspelt profile' => [['url' => 'http://x.test', 'profile' => 'jevv'], "System One connection 'broken' has a 'profile' that is not one of: laya, jev."],
+    'a profile that is not a string' => [['url' => 'http://x.test', 'profile' => ['jev']], "System One connection 'broken' has a 'profile' that is not one of: laya, jev."],
+    'no url' => [['profile' => 'jev'], "System One connection 'broken' needs a 'url'."],
+    'a bad timeout' => [['url' => 'http://x.test', 'timeout' => -1], "System One connection 'broken' has a 'timeout' that is not a number of seconds."],
+]);
+
 it('refuses a missing default connection, as the real client does', function (): void {
     config(['system-one.default' => null]);
     SystemOne::fake();
