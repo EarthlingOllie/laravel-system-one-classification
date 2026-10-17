@@ -30,6 +30,11 @@ final class InvalidDistribution extends InvalidArgumentException implements Syst
         return new self("A score distribution over {$enum} must give some level a probability above 0.");
     }
 
+    public static function notMostLikely(BackedEnum $value, float $probability, float $higher): self
+    {
+        return new self("A score answer's value must be a most likely level: ".$value::class."::{$value->name} has probability {$probability}, but another level has {$higher}.");
+    }
+
     public static function unknownCase(BackedEnum $case, string $enum): self
     {
         return new self($case::class."::{$case->name} is not a case of this distribution over {$enum}.");
