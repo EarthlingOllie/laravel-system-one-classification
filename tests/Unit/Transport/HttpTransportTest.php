@@ -3,8 +3,10 @@
 declare(strict_types=1);
 
 use EarthlingOllie\SystemOneClassification\Exceptions\HostUnavailable;
+use EarthlingOllie\SystemOneClassification\Tests\Support\RecordingSleeper;
 use EarthlingOllie\SystemOneClassification\Transport\HttpTransport;
 use EarthlingOllie\SystemOneClassification\Transport\Response;
+use EarthlingOllie\SystemOneClassification\Transport\RetryPolicy;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Request;
 
@@ -126,4 +128,109 @@ it('defaults to a 30 second timeout', function (): void {
     (new HttpTransport($http, 'http://laya.test'))->post('/v1/systemone', []);
 
     expect($options)->toBeArray()->toHaveKey('timeout', 30.0);
+});
+
+it('tries a 5xx again after each backoff delay, and returns the last response once out of retries', function (int $status): void {
+    $http = new Factory;
+    $http->fake(['*' => $http->sequence()
+        ->push('{"detail":"one"}', $status)
+        ->push('{"detail":"two"}', $status)
+        ->push('{"detail":"three"}', $status)]);
+    $sleeper = new RecordingSleeper;
+
+    $response = (new HttpTransport($http, 'http://laya.test', retry: new RetryPolicy(2, 100), sleeper: $sleeper))->post('/v1/systemone', ['state' => 'x']);
+
+    expect($response)->toEqual(new Response($status, '{"detail":"three"}'))
+        ->and($sleeper->waits())->toBe([100_000, 200_000]);
+    $http->assertSentCount(3);
+    $http->assertSent(fn (Request $request): bool => $request->body() === '{"state":"x"}');
+})->with([500, 502, 503, 504, 599]);
+
+it('returns the first answer that is not a 5xx, without waiting again', function (int $status): void {
+    $http = new Factory;
+    $http->fake(['*' => $http->sequence()
+        ->push('{"detail":"server busy"}', 503)
+        ->push('{"detail":"later"}', $status)
+        ->push('{"detail":"never asked"}', 503)]);
+    $sleeper = new RecordingSleeper;
+
+    $response = (new HttpTransport($http, 'http://laya.test', retry: new RetryPolicy(5, 40), sleeper: $sleeper))->post('/v1/systemone', []);
+
+    expect($response)->toEqual(new Response($status, '{"detail":"later"}'))
+        ->and($sleeper->waits())->toBe([40_000]);
+    $http->assertSentCount(2);
+})->with([200, 401, 422, 499]);
+
+it('never tries a 4xx again: the same request would be refused again', function (int $status): void {
+    $http = new Factory;
+    $http->fake(['*' => $http->sequence()->push('{"detail":"no"}', $status)->push('{}', 200)]);
+    $sleeper = new RecordingSleeper;
+
+    $response = (new HttpTransport($http, 'http://laya.test', retry: new RetryPolicy(3, 10), sleeper: $sleeper))->post('/v1/systemone', []);
+
+    expect($response->status)->toBe($status)
+        ->and($sleeper->waits())->toBe([]);
+    $http->assertSentCount(1);
+})->with([400, 401, 403, 404, 413, 422, 429]);
+
+it('tries again when the host cannot be reached, and answers with the first response it gets', function (): void {
+    $http = new Factory;
+    $http->fake(['*' => $http->sequence()->pushFailedConnection('Connection refused')->push('{"answers":{}}', 200)]);
+    $sleeper = new RecordingSleeper;
+
+    $response = (new HttpTransport($http, 'http://laya.test', retry: new RetryPolicy(1, 75), sleeper: $sleeper))->post('/v1/systemone', []);
+
+    expect($response)->toEqual(new Response(200, '{"answers":{}}'))
+        ->and($sleeper->waits())->toBe([75_000]);
+});
+
+it('raises HostUnavailable naming the attempts once every retry failed to connect', function (): void {
+    $http = new Factory;
+    $http->fake(['*' => $http->sequence()
+        ->pushFailedConnection('refused 1')
+        ->pushFailedConnection('refused 2')
+        ->pushFailedConnection('refused 3 for key sk-bearer')]);
+    $sleeper = new RecordingSleeper;
+    $transport = new HttpTransport($http, 'http://laya.test:8000', 'sk-bearer', retry: new RetryPolicy(2, 5), sleeper: $sleeper);
+
+    expect(fn () => $transport->post('/v1/systemone', []))
+        ->toThrow(HostUnavailable::class, 'The model server at http://laya.test:8000 could not be reached after 3 attempts: refused 3 for key ***')
+        ->and($sleeper->waits())->toBe([5_000, 10_000]);
+});
+
+it('gives the last outcome when failed connections and 5xx answers alternate', function (): void {
+    $sleeper = new RecordingSleeper;
+    $http = new Factory;
+    $http->fake(['*' => $http->sequence()->push('{"detail":"inference failed"}', 500)->pushFailedConnection('timed out')]);
+
+    expect(fn () => (new HttpTransport($http, 'http://laya.test', retry: new RetryPolicy(1, 1), sleeper: $sleeper))->post('/v1/systemone', []))
+        ->toThrow(HostUnavailable::class, 'The model server at http://laya.test could not be reached after 2 attempts: timed out');
+
+    $http = new Factory;
+    $http->fake(['*' => $http->sequence()->pushFailedConnection('timed out')->push('{"detail":"inference failed"}', 500)]);
+
+    expect((new HttpTransport($http, 'http://laya.test', retry: new RetryPolicy(1, 1), sleeper: $sleeper))->post('/v1/systemone', []))
+        ->toEqual(new Response(500, '{"detail":"inference failed"}'))
+        ->and($sleeper->waits())->toBe([1_000, 1_000]);
+});
+
+it('sends once and waits for nothing without a retry policy', function (): void {
+    $http = new Factory;
+    $http->fake(['*' => $http->sequence()->push('{"detail":"busy"}', 503)->push('{}', 200)]);
+    $sleeper = new RecordingSleeper;
+
+    expect((new HttpTransport($http, 'http://laya.test', sleeper: $sleeper))->post('/v1/systemone', [])->status)->toBe(503)
+        ->and($sleeper->waits())->toBe([]);
+    $http->assertSentCount(1);
+});
+
+it('sends the same bearer token with every attempt', function (): void {
+    $http = new Factory;
+    $http->fake(['*' => $http->sequence()->push('{}', 502)->push('{}', 502)->push('{}', 200)]);
+
+    (new HttpTransport($http, 'http://laya.test', 'secret-key', retry: new RetryPolicy(2), sleeper: new RecordingSleeper))->post('/v1/systemone', []);
+
+    $headers = $http->recorded()->map(fn (array $sent): array => $sent[0]->header('Authorization'))->all();
+
+    expect($headers)->toBe([['Bearer secret-key'], ['Bearer secret-key'], ['Bearer secret-key']]);
 });
