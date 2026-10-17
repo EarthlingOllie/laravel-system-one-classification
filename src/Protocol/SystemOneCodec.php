@@ -231,7 +231,7 @@ final readonly class SystemOneCodec
 
         foreach ($question->options() as ['case' => $case]) {
             $label = (string) $case->value;
-            $labelled[] = ['label' => $label, 'case' => $case];
+            $labelled[] = ['label' => $label, 'case' => $case, 'shown' => "'{$label}'"];
 
             if ($label === $choice) {
                 $chosen = $case;
@@ -292,7 +292,8 @@ final readonly class SystemOneCodec
         $labelled = [];
 
         foreach ($levels as $index => ['case' => $case]) {
-            $labelled[] = ['label' => $index, 'case' => $case];
+            // The index is not the backing value unless the levels are 0..n-1: name the case too.
+            $labelled[] = ['label' => $index, 'case' => $case, 'shown' => "'{$index}' (".$case::class."::{$case->name})"];
         }
 
         $distribution = self::distribution($key, $answer, $labelled, "levels of {$question->enum}", $body);
@@ -359,7 +360,8 @@ final readonly class SystemOneCodec
      * @template TEnum of BackedEnum
      *
      * @param  array<mixed>  $answer
-     * @param  non-empty-list<array{label: int|string, case: TEnum}>  $labelled
+     * @param  non-empty-list<array{label: int|string, case: TEnum, shown: string}>  $labelled  each
+     *                                                                                          label with its case and how a message names it
      * @param  string  $labels  what the labels are, for the message ("options of Department")
      * @return Distribution<TEnum>
      */
@@ -373,15 +375,15 @@ final readonly class SystemOneCodec
 
         $entries = [];
 
-        foreach ($labelled as ['label' => $label, 'case' => $case]) {
+        foreach ($labelled as ['label' => $label, 'case' => $case, 'shown' => $shown]) {
             $probability = $probabilities[$label] ?? null;
 
             if (! is_int($probability) && ! is_float($probability)) {
-                throw MalformedResponse::because("The answer for '{$key}' has no numeric probability for '{$label}'.", $body);
+                throw MalformedResponse::because("The answer for '{$key}' has no numeric probability for {$shown}.", $body);
             }
 
             if ($probability < 0 || $probability > 1) {
-                throw MalformedResponse::because("The answer for '{$key}' has a probability for '{$label}' outside [0, 1]: {$probability}.", $body);
+                throw MalformedResponse::because("The answer for '{$key}' has a probability for {$shown} outside [0, 1]: {$probability}.", $body);
             }
 
             $entries[] = ['case' => $case, 'probability' => (float) $probability];

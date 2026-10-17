@@ -244,15 +244,15 @@ it('raises MalformedResponse for a score answer that does not match the protocol
     'no probabilities' => [['probabilities' => null], "The answer for 'urgency' has no 'probabilities' object."],
     'a probability missing' => [
         ['probabilities' => ['0' => 0.1, '1' => 0.1, '3' => 0.8]],
-        "The answer for 'urgency' has no numeric probability for '2'.",
+        "The answer for 'urgency' has no numeric probability for '2' (".Urgency::class.'::High).',
     ],
     'a probability that is not a number' => [
         ['probabilities' => ['0' => 0.1, '1' => '0.1', '2' => 0.4, '3' => 0.4]],
-        "The answer for 'urgency' has no numeric probability for '1'.",
+        "The answer for 'urgency' has no numeric probability for '1' (".Urgency::class.'::Medium).',
     ],
     'a probability outside [0, 1]' => [
         ['probabilities' => ['0' => 0.0, '1' => 0.0, '2' => 0.0, '3' => 1.5]],
-        "The answer for 'urgency' has a probability for '3' outside [0, 1]: 1.5.",
+        "The answer for 'urgency' has a probability for '3' (".Urgency::class.'::Critical) outside [0, 1]: 1.5.',
     ],
     'probabilities that are all 0' => [
         ['probabilities' => ['0' => 0, '1' => 0.0, '2' => 0, '3' => 0.0]],
@@ -271,6 +271,16 @@ it('raises MalformedResponse for a score answer that does not match the protocol
         ['answer_confidence' => 1.5],
         "The answer for 'urgency' has a 'answer_confidence' outside [0, 1]: 1.5.",
     ],
+]);
+
+// Review finding 6: the server keys probabilities by level index, which for Severity (1, 5,
+// 10) is not the backing value, so the message names the level too.
+it('names the level behind a level index in a probability error', function (array $probabilities, string $message): void {
+    expect(fn () => decodeScore(severityQuestion(), severityAnswer(1.0, ['probabilities' => $probabilities])))
+        ->toThrow(MalformedResponse::class, $message);
+})->with([
+    'missing' => [['0' => 0.5, '2' => 0.5], "The answer for 'severity' has no numeric probability for '1' (".Severity::class.'::Major).'],
+    'outside [0, 1]' => [['0' => 0.5, '1' => 0.0, '2' => 2.0], "The answer for 'severity' has a probability for '2' (".Severity::class.'::Critical) outside [0, 1]: 2.'],
 ]);
 
 it('reports a missing raw confidence before a malformed answer_confidence, as choice does', function (): void {
