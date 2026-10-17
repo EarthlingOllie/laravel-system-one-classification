@@ -179,6 +179,7 @@ it('reports a 4xx without a readable message by its status alone', function (str
     'errors without a msg' => ['{"detail": [{"loc": ["body"]}, "x", {"msg": 3}]}'],
     'a JSON list' => ['[]'],
     'a JSON number' => ['404'],
+    'a blank JSON string' => ['" "'],
     'an error object without a message' => ['{"error": {"code": 7}}'],
 ]);
 
@@ -199,6 +200,8 @@ it('carries the server message whatever shape the error body takes', function (s
     'message wins over error' => ['{"error":"second","message":"first"}', 'first'],
     'trimmed' => ['{"detail":"  spaced  "}', 'spaced'],
     'plain text' => ["Unauthorized\n", 'Unauthorized'],
+    // Review finding: a JSON string body is plain text too.
+    'a JSON string' => ['"Rate limit exceeded"', 'Rate limit exceeded'],
     'plain text, its whitespace collapsed' => ["Bad\n\n  key", 'Bad key'],
 ]);
 
@@ -222,6 +225,7 @@ it('gives the reason of a FastAPI validation error, without the input it echoes'
         ['type' => 'x', 'loc' => [], 'msg' => 'No location'],
         ['type' => 'y', 'loc' => ['body', 'questions', 0, 7.5, true], 'msg' => 'Odd location'],
         ['type' => 'z', 'msg' => 'Location left out'],
+        ['type' => 'w', 'loc' => 'body', 'msg' => 'Location not a list'],
     ]], JSON_THROW_ON_ERROR);
 
     try {
@@ -229,7 +233,7 @@ it('gives the reason of a FastAPI validation error, without the input it echoes'
         test()->fail('Expected RejectedByModel.');
     } catch (RejectedByModel $rejected) {
         expect($rejected->status)->toBe(422)
-            ->and($rejected->detail)->toBe('body.state: Field required; body.min_confidence: Input should be a valid number; No location; body.questions.0: Odd location; Location left out')
+            ->and($rejected->detail)->toBe('body.state: Field required; body.min_confidence: Input should be a valid number; No location; body.questions.0: Odd location; Location left out; Location not a list')
             ->and($rejected->getMessage())->not->toContain('the customer text')->not->toContain('private');
     }
 });

@@ -24,9 +24,9 @@ use function trim;
  * laya-serve and Jev answer `{"detail": "..."}`. The other shapes a host or a gateway in front
  * of it may use are read too: FastAPI's validation errors (`{"detail": [{"loc": [...], "msg":
  * "..."}]}`, read as `loc: msg` pairs, leaving out the `input` they echo, which may hold the
- * context), `{"message": "..."}`, `{"error": "..."}` and `{"error": {"message": "..."}}`. A body
- * that is not JSON is the message itself, its whitespace collapsed and cut to MAX_TEXT_LENGTH
- * characters, unless it is an HTML page.
+ * context), `{"message": "..."}`, `{"error": "..."}` and `{"error": {"message": "..."}}`. A JSON
+ * string is the message, trimmed. A body that is not JSON is the message itself, its whitespace
+ * collapsed and cut to MAX_TEXT_LENGTH characters, unless it is an HTML page.
  */
 final readonly class ErrorDetail
 {
@@ -40,11 +40,15 @@ final readonly class ErrorDetail
         }
 
         $decoded = json_decode($body, true);
-        $fields = is_array($decoded) ? $decoded : [];
 
-        return self::message($fields['detail'] ?? null)
-            ?? self::message($fields['message'] ?? null)
-            ?? self::message($fields['error'] ?? null);
+        // A JSON string is the message itself, as plain text is.
+        if (! is_array($decoded)) {
+            return self::message($decoded);
+        }
+
+        return self::message($decoded['detail'] ?? null)
+            ?? self::message($decoded['message'] ?? null)
+            ?? self::message($decoded['error'] ?? null);
     }
 
     private static function message(mixed $value): ?string
