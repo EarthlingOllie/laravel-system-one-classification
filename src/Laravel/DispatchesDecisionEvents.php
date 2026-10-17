@@ -20,7 +20,7 @@ final readonly class DispatchesDecisionEvents implements DecisionObserver
     public function __construct(
         private Dispatcher $events,
         private string $connection,
-        private ?string $model,
+        private ?string $defaultModel,
         private bool $includeContext,
     ) {}
 
@@ -28,7 +28,7 @@ final readonly class DispatchesDecisionEvents implements DecisionObserver
     {
         $this->events->dispatch(new DecisionMade(
             $this->connection,
-            $this->model,
+            $this->model($decision),
             self::keys($decision),
             $result,
             $result->meta,
@@ -40,7 +40,13 @@ final readonly class DispatchesDecisionEvents implements DecisionObserver
 
     public function failed(Decision $decision, SystemOneException $exception): void
     {
-        $this->events->dispatch(new DecisionFailed($this->connection, $this->model, self::keys($decision), $exception, $this->context($decision)));
+        $this->events->dispatch(new DecisionFailed($this->connection, $this->model($decision), self::keys($decision), $exception, $this->context($decision)));
+    }
+
+    /** The model the decision was sent with: its pinned one wins over the connection's default (#9). */
+    private function model(Decision $decision): ?string
+    {
+        return $decision->model ?? $this->defaultModel;
     }
 
     /** @return list<non-empty-string> */

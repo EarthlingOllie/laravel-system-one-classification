@@ -95,6 +95,20 @@ it('names the connection the decision went through, and no model when the server
     Event::assertDispatched(fn (DecisionMade $event): bool => $event->connection === 'other' && $event->model === null);
 });
 
+// #9: a model the decision pins wins over the connection's default, so the events name the
+// model that was asked, not the connection's default.
+it('names the model the decision pinned, which wins over the connection default', function (): void {
+    fakeEventAnswersThen();
+
+    SystemOne::decide(eventDecision()->withModel('multilingual'));
+
+    expect(fn () => SystemOne::decide(eventDecision()->withModel('multilingual')))->toThrow(RejectedByModel::class);
+
+    Http::assertSent(fn (Request $request): bool => ($request->data()['model'] ?? null) === 'multilingual');
+    Event::assertDispatched(fn (DecisionMade $event): bool => $event->model === 'multilingual');
+    Event::assertDispatched(fn (DecisionFailed $event): bool => $event->model === 'multilingual');
+});
+
 it('dispatches DecisionFailed with the connection and the typed exception, then throws it', function (Closure $fake, string $type): void {
     $fake();
 

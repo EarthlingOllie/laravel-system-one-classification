@@ -541,8 +541,8 @@ How the typing works:
   implements them (`Laravel\DispatchesDecisionEvents`,
   `Laravel\StoreResponseCache`), and `SystemOneManager` wires them per
   connection from `system-one.events` and `system-one.cache`.
-  - `Laravel\Events\DecisionMade` carries the connection, the connection's
-    `model`, the question keys, the `Result`, its `Meta`, the latency and
+  - `Laravel\Events\DecisionMade` carries the connection, the model asked (the
+    decision's pinned one, else the connection's `model`), the question keys, the `Result`, its `Meta`, the latency and
     `cached`; `DecisionFailed` the connection, model, question keys and the
     `SystemOneException` (for decisions refused before sending too). Neither
     holds the API key, and the context (text or fields) only with

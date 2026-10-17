@@ -17,7 +17,7 @@ final readonly class DecisionMade
 {
     /**
      * @param  string  $connection  the configured connection the decision went through
-     * @param  ?string  $model  the model the connection asks for; null when the server routes
+     * @param  ?string  $model  the model asked: the decision's pinned one, else the connection's default; null when the server routes
      * @param  list<non-empty-string>  $questionKeys  the keys of the questions asked, in order
      * @param  Meta  $meta  the result's metadata: model, routed checkpoint, routing reason, tokens, latency
      * @param  ?float  $latencyMs  the round trip's latency; null when the result came from the cache
