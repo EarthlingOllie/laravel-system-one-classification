@@ -28,8 +28,9 @@ return [
             // not comparable across models. Unset or empty means 'laya'.
             'profile' => env('SYSTEM_ONE_PROFILE', 'laya'),
             // Laya only (jev ignores it, but it must still be true or false): true when the
-            // server runs with LAYA_TOURNAMENT_GROUP, which raises the limit on options per
-            // choice question from 100 to 255.
+            // server runs with LAYA_TOURNAMENT_GROUP set to a group size from 2 to 100 (any other
+            // value leaves it off), which raises the limit on options per choice question from
+            // 100 to 255.
             'tournament_grouping' => env('SYSTEM_ONE_TOURNAMENT_GROUPING', false),
             // `model` values Decision::withModel() may pin beyond the profile's own: for Laya
             // the server's LAYA_EXTRA_MODELS (its checkpoints and their aliases are built in),

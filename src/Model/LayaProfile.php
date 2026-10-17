@@ -19,7 +19,7 @@ final readonly class LayaProfile implements ModelProfile
     /** laya-serve's cap on choice options (413 above it). */
     public const int MAX_CHOICE_OPTIONS = 100;
 
-    /** The cap when the server runs with LAYA_TOURNAMENT_GROUP. */
+    /** The cap when the server runs with LAYA_TOURNAMENT_GROUP (a group size from 2 to 100). */
     public const int TOURNAMENT_MAX_CHOICE_OPTIONS = 255;
 
     /**
@@ -39,9 +39,11 @@ final readonly class LayaProfile implements ModelProfile
     public bool $requiresScoreDescriptions;
 
     /**
-     * @param  bool  $tournamentGrouping  whether the server runs with LAYA_TOURNAMENT_GROUP
-     * @param  list<string>  $extraModels  further `model` values the server accepts
-     *                                     (LAYA_EXTRA_MODELS)
+     * @param  bool  $tournamentGrouping  whether the server runs with LAYA_TOURNAMENT_GROUP set
+     *                                    to a group size from 2 to 100
+     * @param  list<string>  $extraModels  further `model` values the server accepts: the names
+     *                                     in its LAYA_EXTRA_MODELS (a JSON object of name to
+     *                                     source)
      */
     public function __construct(bool $tournamentGrouping = false, private array $extraModels = [])
     {
