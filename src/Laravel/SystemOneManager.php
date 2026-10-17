@@ -132,8 +132,9 @@ final readonly class SystemOneManager
     }
 
     /**
-     * A list of model names, or a comma-separated string of them (SYSTEM_ONE_MODELS). Empty
-     * entries of the string are dropped, so '' and null mean none.
+     * A list of model names, or a comma-separated string of them (SYSTEM_ONE_MODELS), each
+     * trimmed. Empty entries of the string are dropped, so '' and null mean none; an empty or
+     * non-string entry of the list is refused.
      *
      * @return list<string>
      *
@@ -153,13 +154,19 @@ final readonly class SystemOneManager
             throw InvalidConfiguration::invalidModels($name);
         }
 
+        $names = [];
+
         foreach ($models as $model) {
-            if (! is_string($model) || trim($model) === '') {
+            $model = is_string($model) ? trim($model) : '';
+
+            if ($model === '') {
                 throw InvalidConfiguration::invalidModels($name);
             }
+
+            $names[] = $model;
         }
 
-        return $models;
+        return $names;
     }
 
     private function defaultConnection(): string

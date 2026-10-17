@@ -113,6 +113,14 @@ it('accepts the extra models a connection lists, as a list or a comma-separated 
     'string' => 'acme/laya-finetune, jev-1',
 ]);
 
+// Review finding: the string form was trimmed but the list form was not, so the same names
+// gave different allowlists.
+it('trims the names in either form the same way', function (mixed $models): void {
+    [$request] = sendThrough(['profile' => 'jev', 'models' => $models], model: 'jev-1');
+
+    expect($request->data())->toHaveKey('model', 'jev-1');
+})->with(['list' => [[' jev-1 ']], 'string' => ' jev-1 ']);
+
 it('accepts no models on a jev connection that lists none', function (mixed $models): void {
     expect(fn () => sendThrough(['profile' => 'jev', 'models' => $models], model: 'jev-1'))
         ->toThrow(InvalidDecision::class, "but the jev profile accepts no model values; list the host's in the connection's 'models' config");
