@@ -52,6 +52,7 @@ it('builds the standalone file from the package compose file, pointing the build
     expect(parsedYaml($yaml))->toBe($source)
         ->and($yaml)->toStartWith("# Local Laya server for this app, written by `php artisan system-one:install`.\n")
         ->and($yaml)->toContain('docker compose -f compose.system-one.yaml up -d --wait')
+        ->and($yaml)->toContain("# The Compose project is named system-one in every app, so all the apps on this machine share\n# one server (on port 8000) and one copy of the weights; `down` in any of them stops it for all.\n")
         ->and($yaml)->not->toContain('composer laya:up');
 });
 

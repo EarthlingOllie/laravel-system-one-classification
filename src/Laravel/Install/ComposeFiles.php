@@ -79,6 +79,9 @@ final readonly class ComposeFiles
             #
             # The first start builds the image and downloads the english checkpoint (~0.85 GB), which
             # takes a while. Every LAYA_* setting below can be overridden from the environment.
+            #
+            # The Compose project is named system-one in every app, so all the apps on this machine share
+            # one server (on port 8000) and one copy of the weights; `down` in any of them stops it for all.
 
             YAML.str_replace(self::CONTEXT_LINE, 'context: '.$this->contextFor($appBasePath), $body);
     }
