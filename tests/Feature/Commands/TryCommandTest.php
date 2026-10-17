@@ -79,6 +79,7 @@ it('prints the answers as JSON with --json', function (): void {
     $this->artisan('system-one:try', ['text' => 'x', '--yes-no' => ['Cancel?'], '--json' => true])
         ->expectsOutput(json_encode([
             'connection' => 'local',
+            'routing' => ['model' => 'laya-rl-agent', 'checkpoint' => 'english', 'reason' => 'English', 'input_tokens' => null, 'output_tokens' => null],
             'answers' => [
                 'q1' => [
                     'type' => 'yes_no',
@@ -247,3 +248,110 @@ it('writes errors to stderr, leaving stdout to the answers', function (array $ar
 it('is registered as system-one:try', function (): void {
     expect(app(Kernel::class)->all()['system-one:try'])->toBeInstanceOf(TryCommand::class);
 });
+
+/*
+ * Choice and score questions (#4, #5) and routing (#7's meta). Their options come from an enum
+ * of the app, named before the instructions: --choice="App\Enums\Department:Which department?".
+ */
+
+const TRY_DEPARTMENT = 'EarthlingOllie\\SystemOneClassification\\Tests\\Fixtures\\Enums\\Department';
+const TRY_URGENCY = 'EarthlingOllie\\SystemOneClassification\\Tests\\Fixtures\\Enums\\Urgency';
+
+/** Answers q1 yes/no, q2 choice over Department, q3 score over Urgency, with the given routing. */
+function fakeMixedAnswers(?array $routing = ['model' => 'english', 'reason' => 'English Latin text']): void
+{
+    Http::fake(['*' => Http::response([
+        'model' => 'laya-rl-agent',
+        'answers' => [
+            'q1' => ['type' => 'noul', 'noul' => 0.2],
+            'q2' => ['type' => 'choice', 'choice' => 'technical', 'confidence' => 0.3, 'answer_confidence' => 0.7, 'probabilities' => ['billing' => 0.2, 'technical' => 0.7, 'other' => 0.1]],
+            'q3' => ['type' => 'score', 'score' => 2.1, 'confidence' => 0.4, 'legend' => ['can wait', 'soon', 'today', 'blocking'], 'probabilities' => ['0' => 0.05, '1' => 0.15, '2' => 0.4, '3' => 0.4]],
+        ],
+        ...($routing === null ? [] : ['routing' => $routing]),
+        'usage' => ['input_tokens' => 80, 'output_tokens' => 0],
+    ])]);
+}
+
+it('asks choice and score questions over the named enums, after the yes/no ones, and prints the routing', function (): void {
+    fakeMixedAnswers();
+
+    $this->artisan('system-one:try', [
+        'text' => 'The app crashes.',
+        '--yes-no' => ['Cancel?'],
+        '--choice' => [TRY_DEPARTMENT.':Which department?'],
+        '--score' => [TRY_URGENCY.':How urgent?'],
+    ])
+        ->expectsOutput('Routing: model laya-rl-agent, checkpoint english (English Latin text), 80 input tokens')
+        ->expectsOutput('q1 (yes/no): Cancel?')
+        ->expectsOutput('q2 (choice over Department): Which department?')
+        ->expectsOutput('  value: technical (Department::Technical)')
+        ->expectsOutput('  confidence: 0.7')
+        ->expectsOutput('  distribution: billing 0.2, technical 0.7, other 0.1')
+        ->expectsOutput('q3 (score over Urgency): How urgent?')
+        ->expectsOutput('  value: 2 (Urgency::High), expected 2.15')
+        ->expectsOutput('  confidence: 0.4')
+        ->expectsOutput('  distribution: 0 0.05, 1 0.15, 2 0.4, 3 0.4')
+        ->assertExitCode(Command::SUCCESS);
+
+    Http::assertSent(fn (Request $request): bool => array_keys((array) $request['questions']) === ['q1', 'q2', 'q3']
+        && $request['questions']['q2']['type'] === 'choice'
+        && $request['questions']['q3']['criteria'] === ['can wait', 'soon', 'today', 'blocking']);
+});
+
+it('says when the server reports no routing', function (): void {
+    fakeMixedAnswers(routing: null);
+
+    $this->artisan('system-one:try', ['text' => 'x', '--yes-no' => ['Cancel?']])
+        ->expectsOutput('Routing: model laya-rl-agent, 80 input tokens')
+        ->assertExitCode(Command::SUCCESS);
+});
+
+it('prints choice and score answers and the routing as JSON', function (): void {
+    fakeMixedAnswers();
+    $command = new TryCommand;
+    $command->setLaravel(app());
+    $tester = new CommandTester($command);
+
+    $tester->execute(['text' => 'x', '--yes-no' => ['Cancel?'], '--choice' => [TRY_DEPARTMENT.':Which department?'], '--score' => [TRY_URGENCY.':How urgent?'], '--json' => true]);
+    $printed = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+    expect($tester->getStatusCode())->toBe(Command::SUCCESS)
+        ->and($printed['routing'])->toBe(['model' => 'laya-rl-agent', 'checkpoint' => 'english', 'reason' => 'English Latin text', 'input_tokens' => 80, 'output_tokens' => 0])
+        ->and($printed['answers']['q2'])->toBe([
+            'type' => 'choice',
+            'enum' => TRY_DEPARTMENT,
+            'instructions' => 'Which department?',
+            'value' => 'technical',
+            'case' => 'Technical',
+            'confidence' => 0.7,
+            'distribution' => ['billing' => 0.2, 'technical' => 0.7, 'other' => 0.1],
+        ])
+        ->and($printed['answers']['q3'])->toBe([
+            'type' => 'score',
+            'enum' => TRY_URGENCY,
+            'instructions' => 'How urgent?',
+            'value' => 2,
+            'case' => 'High',
+            'expected' => 2.15,
+            'confidence' => 0.4,
+            'distribution' => [0.05, 0.15, 0.4, 0.4],
+        ])
+        // The levels stay JSON object keys, so a reader sees which level each probability is for.
+        ->and($tester->getDisplay())->toContain('"distribution": {
+                "0": 0.05,');
+});
+
+it('refuses a --choice or --score that does not name a backed enum, sending nothing', function (array $arguments, string $message): void {
+    Http::fake();
+
+    $this->artisan('system-one:try', ['text' => 'x', ...$arguments])
+        ->expectsOutputToContain($message)
+        ->assertExitCode(Command::INVALID);
+
+    Http::assertNothingSent();
+})->with([
+    'no enum' => [['--choice' => ['Which department?']], "--choice needs an enum class before a colon, as in --choice=\"App\\Enums\\Department:Which department?\"; got 'Which department?'."],
+    'an unknown class' => [['--score' => ['App\\Nope:How urgent?']], "--score needs an enum class before a colon, as in --score=\"App\\Enums\\Urgency:How urgent is this?\"; got 'App\\Nope:How urgent?'."],
+    'blank instructions' => [['--choice' => [TRY_DEPARTMENT.':  ']], "Question 'q1' needs instructions."],
+    'a string-backed score' => [['--score' => [TRY_DEPARTMENT.':How urgent?']], 'Department'],
+]);

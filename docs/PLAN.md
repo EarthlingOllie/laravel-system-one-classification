@@ -609,13 +609,18 @@ How the typing works:
     or null when the server lists none to a keyless request, revisions,
     device) and prints it with the URL redacted. 1 when unreachable, a 4xx/5xx,
     an unexpected body or any status but `ok`; 2 for an unknown connection.
-  - `system-one:try [text] [--file=] --yes-no=... [--connection=] [--json]`
-    asks each `--yes-no` (keyed q1, q2, ...) about the argument, the file or
+  - `system-one:try [text] [--file=] [--yes-no=...] [--choice=...] [--score=...]
+    [--connection=] [--json]` asks each question about the argument, the file or
     stdin (refused with 2 when stdin is a terminal, rather than waiting on it),
     and prints value, confidence (the reported value's probability) and
     distribution per answer. Its errors go to stderr, so stdout stays valid JSON
-    under `--json`. Choice and score questions join as `--choice` and
-    `--score` once #4/#5 add them; routing joins once #8's `Result::$meta` lands.
+    under `--json`. On the integration branch: `--choice` and `--score` (#4, #5)
+    name a backed enum of the app before the instructions
+    (`--choice="App\Enums\Department:Which department?"`), as choice and score
+    questions are built in code; keys run q1, q2, ... over the yes/no questions,
+    then the choices, then the scores. A score also prints its expected level.
+    It prints how the server routed the decision (#7's `Meta`: model, checkpoint,
+    reason, input tokens), and `--json` adds a `routing` object.
 - `Transport::get()` sits next to `post()` for the health probe; every
   transport implements both.
 
