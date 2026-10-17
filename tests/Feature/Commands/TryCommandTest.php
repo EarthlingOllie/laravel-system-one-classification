@@ -425,3 +425,14 @@ it('answers from SystemOne::fake() in an app test, which then sees the decision'
     $fake->assertDecided(fn (Decision $decision): bool => $decision->context->state === 'We will cancel.');
     Http::assertNothingSent();
 });
+
+it('prints only the routing the server reports', function (array $root, string $routing): void {
+    Http::fake(['*' => Http::response(['answers' => ['q1' => ['type' => 'noul', 'noul' => 0.2]], ...$root])]);
+
+    $this->artisan('system-one:try', ['text' => 'x', '--yes-no' => ['Cancel?']])
+        ->expectsOutput("Routing: {$routing}")
+        ->assertExitCode(Command::SUCCESS);
+})->with([
+    'a checkpoint without a reason' => [['routing' => ['model' => 'english']], 'checkpoint english'],
+    'nothing' => [[], 'not reported'],
+]);
