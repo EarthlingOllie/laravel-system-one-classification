@@ -356,8 +356,9 @@ How the typing works:
   `confidence`), `maxChoiceOptions`, `requiresScoreDescriptions` and `models()`.
   `LayaProfile`: 100 options (255 with `tournamentGrouping`), descriptions required, and
   `LayaProfile::MODELS` (laya-serve's checkpoints and aliases, as its unknown-model 422
-  lists them) plus any `extraModels`. `JevProfile`: 255 options, descriptions optional, and
-  only the `models` its connection lists, because Jev's are not in anything recorded yet
+  lists them) plus any `extraModels`, matched in any case as laya-serve does (it trims and
+  lowercases a name before looking it up); `acceptsModel()` holds that rule. `JevProfile`: 255 options, descriptions optional, and
+  only the `models` its connection lists, matched exactly, because Jev's are not in anything recorded yet
   (so `withModel()` is refused on a Jev connection that lists none). The contract tests
   read the cap and the model list out of the recorded 413 and 422 messages.
   `SystemOneCodec::encode()` runs `Model\ProfileLimits::check()` first: a pinned model
