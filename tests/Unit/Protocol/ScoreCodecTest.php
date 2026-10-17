@@ -273,6 +273,11 @@ it('raises MalformedResponse for a score answer that does not match the protocol
     ],
 ]);
 
+it('reports a missing raw confidence before a malformed answer_confidence, as choice does', function (): void {
+    expect(fn () => decodeScore(urgencyQuestion(), urgencyAnswer(['confidence' => null, 'answer_confidence' => 'high'])))
+        ->toThrow(MalformedResponse::class, "The answer for 'urgency' has no numeric 'confidence'.");
+});
+
 it('reads a score, a choice and a yes/no answer from one response', function (): void {
     $urgency = urgencyQuestion();
     $department = Question::choice('department', Department::class, 'Which department?');

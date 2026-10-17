@@ -244,10 +244,13 @@ final readonly class SystemOneCodec
             throw MalformedResponse::because("The answer for '{$key}' names '{$choice}', which is not an option of {$question->enum}.", $body);
         }
 
+        // The raw confidence first, so a response wrong in both says so about it, as it always has.
+        $confidence = $this->confidence($key, $answer, $body);
+
         return new ChoiceAnswer(
             $chosen,
             self::answerConfidence($key, $answer, $distribution->probabilityOf($chosen), $body),
-            $this->confidence($key, $answer, $body),
+            $confidence,
             $distribution,
         );
     }
@@ -308,10 +311,12 @@ final readonly class SystemOneCodec
             throw MalformedResponse::because("The answer for '{$key}' gives no level a probability above 0.", $body);
         }
 
+        $confidence = $this->confidence($key, $answer, $body);
+
         return new ScoreAnswer(
             $value,
             self::answerConfidence($key, $answer, $highest, $body),
-            $this->confidence($key, $answer, $body),
+            $confidence,
             $distribution,
         );
     }
