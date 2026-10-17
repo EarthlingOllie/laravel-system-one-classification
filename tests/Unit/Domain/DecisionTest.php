@@ -91,6 +91,16 @@ it('keeps the pinned model when more questions are asked', function (): void {
     expect($decision->model)->toBe('multilingual');
 });
 
+it('pins the latest model when withModel() is called again, keeping the request controls', function (): void {
+    $decision = Decision::about(Context::text('We were billed twice.'))
+        ->withModel('english')
+        ->withMinConfidence(0.7)
+        ->withModel('multilingual');
+
+    expect($decision->model)->toBe('multilingual')
+        ->and($decision->minConfidence)->toBe(0.7);
+});
+
 it('rejects a blank model', function (string $model): void {
     Decision::about(Context::text('We were billed twice.'))->withModel($model);
 })->throws(InvalidDecision::class, 'A model must not be blank; leave it out to let the server choose.')->with(['', ' ', "\t\n"]);
