@@ -133,8 +133,9 @@ final readonly class SystemOneManager
 
     /**
      * A list of model names, or a comma-separated string of them (SYSTEM_ONE_MODELS), each
-     * trimmed. Empty entries of the string are dropped, so '' and null mean none; an empty or
-     * non-string entry of the list is refused.
+     * trimmed. Empty entries of the string are dropped, so '' means none (as an unset or null
+     * key does: the caller reads it with ?? []); an empty or non-string entry of the list is
+     * refused.
      *
      * @return list<string>
      *
@@ -142,10 +143,6 @@ final readonly class SystemOneManager
      */
     private static function models(string $name, mixed $models): array
     {
-        if ($models === null) {
-            return [];
-        }
-
         if (is_string($models)) {
             return array_values(array_filter(array_map(trim(...), explode(',', $models)), static fn (string $model): bool => $model !== ''));
         }

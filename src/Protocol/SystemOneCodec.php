@@ -69,23 +69,11 @@ final readonly class SystemOneCodec
     public function encode(Decision $decision): array
     {
         ProfileLimits::check($this->profile, $decision);
-        $error = self::jsonError($decision->context->text);
-
-        if ($error !== null) {
-            throw InvalidDecision::contextNotUtf8($error);
-        }
 
         $questions = [];
 
         foreach ($decision->questions() as $question) {
-            $request = $this->wire($question)['request']();
-            $error = self::jsonError($request);
-
-            if ($error !== null) {
-                throw InvalidDecision::questionNotUtf8($question->key, $error);
-            }
-
-            $questions[$question->key] = $request;
+            $questions[$question->key] = $this->wire($question)['request']();
         }
 
         if ($questions === []) {
@@ -98,7 +86,17 @@ final readonly class SystemOneCodec
             $body['model'] = $decision->model;
         }
 
-        return [...$body, 'questions' => $questions];
+        $body = [...$body, 'questions' => $questions];
+
+        // Encoded once here so a body the HTTP client could not encode fails as the package's
+        // own exception; only then are its parts encoded one by one to name the culprit.
+        if (self::jsonError($body) !== null) {
+            [$part, $error] = self::notUtf8($body);
+
+            throw InvalidDecision::notUtf8($part, $error);
+        }
+
+        return $body;
     }
 
     /**
@@ -166,6 +164,32 @@ final readonly class SystemOneCodec
         }
 
         return null;
+    }
+
+    /**
+     * The part of a body that json_encode() refused, as a message names it, and why: the state,
+     * a question by its key, or else the pinned model, the only other text in it.
+     *
+     * @param  array{state: string, model?: string, questions: array<string, array<string, mixed>>}  $body
+     * @return array{string, ?JsonException}
+     */
+    private static function notUtf8(array $body): array
+    {
+        $error = self::jsonError($body['state']);
+
+        if ($error !== null) {
+            return ['The context text', $error];
+        }
+
+        foreach ($body['questions'] as $key => $request) {
+            $error = self::jsonError($request);
+
+            if ($error !== null) {
+                return ["The text of question '{$key}'", $error];
+            }
+        }
+
+        return ['The pinned model', self::jsonError($body['model'] ?? null)];
     }
 
     /**

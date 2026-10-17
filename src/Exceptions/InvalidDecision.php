@@ -136,14 +136,12 @@ final class InvalidDecision extends InvalidArgumentException implements SystemOn
         return new self("The decision pins model '{$model}', which the {$profile} profile does not accept; use one of: ".implode(', ', $accepted).'.');
     }
 
-    public static function contextNotUtf8(JsonException $previous): self
+    /**
+     * @param  string  $part  what is not UTF-8, as the message names it ("The context text")
+     */
+    public static function notUtf8(string $part, ?JsonException $previous): self
     {
-        return new self('The context text is not valid UTF-8, which JSON requires.', previous: $previous);
-    }
-
-    public static function questionNotUtf8(string $key, JsonException $previous): self
-    {
-        return new self("Question '{$key}' has text that is not valid UTF-8, which JSON requires.", previous: $previous);
+        return new self("{$part} is not valid UTF-8, which JSON requires.", previous: $previous);
     }
 
     public static function unsupportedQuestion(object $question): self
