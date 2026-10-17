@@ -7,6 +7,7 @@ use EarthlingOllie\SystemOneClassification\Domain\Decision;
 use EarthlingOllie\SystemOneClassification\Domain\Question;
 use EarthlingOllie\SystemOneClassification\Domain\Question\ScoreQuestion;
 use EarthlingOllie\SystemOneClassification\Exceptions\MalformedResponse;
+use EarthlingOllie\SystemOneClassification\Model\JevProfile;
 use EarthlingOllie\SystemOneClassification\Protocol\SystemOneCodec;
 use EarthlingOllie\SystemOneClassification\Result\Answer\ScoreAnswer;
 use EarthlingOllie\SystemOneClassification\Result\Confidence;
@@ -114,7 +115,7 @@ it('decodes the most likely level, the expected level, both confidences and the 
 });
 
 it('tags the raw confidence with the profile the codec was built for', function (): void {
-    expect(decodeScore(urgencyQuestion(), urgencyAnswer(), new SystemOneCodec('jev'))->confidence)
+    expect(decodeScore(urgencyQuestion(), urgencyAnswer(), new SystemOneCodec(new JevProfile))->confidence)
         ->toEqual(new Confidence(0.3043, 'jev'));
 });
 

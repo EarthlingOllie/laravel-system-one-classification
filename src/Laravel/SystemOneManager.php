@@ -7,6 +7,8 @@ namespace EarthlingOllie\SystemOneClassification\Laravel;
 use EarthlingOllie\SystemOneClassification\Client\DecisionClient;
 use EarthlingOllie\SystemOneClassification\Domain\Decision;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidConfiguration;
+use EarthlingOllie\SystemOneClassification\Model\JevProfile;
+use EarthlingOllie\SystemOneClassification\Model\LayaProfile;
 use EarthlingOllie\SystemOneClassification\Protocol\SystemOneCodec;
 use EarthlingOllie\SystemOneClassification\Result\Result;
 use EarthlingOllie\SystemOneClassification\Transport\HttpTransport;
@@ -14,7 +16,6 @@ use Illuminate\Contracts\Config\Repository;
 use Illuminate\Http\Client\Factory;
 
 use function implode;
-use function in_array;
 use function is_array;
 use function is_numeric;
 use function is_string;
@@ -27,7 +28,7 @@ use function is_string;
  */
 final readonly class SystemOneManager
 {
-    /** The model profiles a connection can name; #6 turns each into a ModelProfile. */
+    /** The model profiles a connection can name. */
     private const array PROFILES = ['laya', 'jev'];
 
     public function __construct(
@@ -76,9 +77,11 @@ final readonly class SystemOneManager
             $profile = 'laya';
         }
 
-        if (! in_array($profile, self::PROFILES, true)) {
-            throw InvalidConfiguration::unknownProfile($name, implode(', ', self::PROFILES));
-        }
+        $profile = match ($profile) {
+            'laya' => new LayaProfile,
+            'jev' => new JevProfile,
+            default => throw InvalidConfiguration::unknownProfile($name, implode(', ', self::PROFILES)),
+        };
 
         return new DecisionClient(
             new HttpTransport($this->http, $url, $apiKey, (float) $timeout),

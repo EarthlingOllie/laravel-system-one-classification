@@ -15,6 +15,8 @@ use EarthlingOllie\SystemOneClassification\Exceptions\HostUnavailable;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidDecision;
 use EarthlingOllie\SystemOneClassification\Exceptions\MalformedResponse;
 use EarthlingOllie\SystemOneClassification\Exceptions\RejectedByModel;
+use EarthlingOllie\SystemOneClassification\Model\LayaProfile;
+use EarthlingOllie\SystemOneClassification\Model\ModelProfile;
 use EarthlingOllie\SystemOneClassification\Result\Answer\Answer;
 use EarthlingOllie\SystemOneClassification\Result\Answer\ChoiceAnswer;
 use EarthlingOllie\SystemOneClassification\Result\Answer\ScoreAnswer;
@@ -51,10 +53,10 @@ final readonly class SystemOneCodec
     public const string PATH = '/v1/systemone';
 
     /**
-     * @param  string  $profile  the model profile whose raw `confidence` values this codec reads;
-     *                           every decoded Confidence is tagged with it
+     * @param  ModelProfile  $profile  the model behind the connection; every decoded Confidence
+     *                                 is tagged with its name
      */
-    public function __construct(private string $profile = 'laya') {}
+    public function __construct(private ModelProfile $profile = new LayaProfile) {}
 
     /**
      * @return array{state: string, questions: array<string, array<string, mixed>>} choice criteria are a stdClass, so they always encode as a JSON object
@@ -403,7 +405,7 @@ final readonly class SystemOneCodec
     }
 
     /**
-     * The model's raw `confidence`, tagged with this codec's profile.
+     * The model's raw `confidence`, tagged with this codec's profile's name.
      *
      * @param  array<mixed>  $answer
      */
@@ -415,7 +417,7 @@ final readonly class SystemOneCodec
             throw MalformedResponse::because("The answer for '{$key}' has no numeric 'confidence'.", $body);
         }
 
-        return new Confidence((float) $confidence, $this->profile);
+        return new Confidence((float) $confidence, $this->profile->name);
     }
 
     /**
