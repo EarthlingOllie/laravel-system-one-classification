@@ -135,9 +135,11 @@ final readonly class FakeAnswer
         $lowest = self::mean($down);
         $highest = self::mean($up);
 
-        // Written as "not inside" so that NAN, which fails every comparison, is refused too.
-        if (! ($expected >= $lowest && $expected <= $highest)) {
-            throw InvalidFakeAnswer::expectedOutOfReach($question->key, $case, $expected, $lowest, $highest);
+        // At the lowest mean the case only ties with the lower levels, and a tie goes to the
+        // lowest of them (the server's argmax), so that end is open unless it is the case's own
+        // value. Written as "not inside" so that NAN, which fails every comparison, is refused.
+        if (! (($expected > $lowest || (float) $expected === (float) $value) && $expected <= $highest)) {
+            throw InvalidFakeAnswer::expectedOutOfReach($question->key, $case, $expected, $lowest, $lowest < $value, $highest);
         }
 
         // Blend the case alone (mean = its value) with the set on the expected level's side, in

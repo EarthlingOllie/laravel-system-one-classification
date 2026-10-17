@@ -170,10 +170,18 @@ it('refuses an expected level its case cannot be the most likely level for', fun
     expect(fn (): FakeAnswer => FakeAnswer::score(fakeUrgency(), $case, expected: $expected))
         ->toThrow(InvalidFakeAnswer::class, $message);
 })->with([
-    'too high' => [Urgency::High, 2.6, "The scripted answer to 'urgency' cannot have an expected level of 2.6 with High as its most likely level: that level allows 1 to 2.5."],
-    'too low' => [Urgency::Low, -0.1, "The scripted answer to 'urgency' cannot have an expected level of -0.1 with Low as its most likely level: that level allows 0 to 1.6666666666667."],
-    'not a number' => [Urgency::Low, NAN, "The scripted answer to 'urgency' cannot have an expected level of NAN with Low as its most likely level: that level allows 0 to 1.6666666666667."],
+    'too high' => [Urgency::High, 2.6, "The scripted answer to 'urgency' cannot have an expected level of 2.6 with High as its most likely level: that level allows more than 1, up to 2.5."],
+    'too low' => [Urgency::Low, -0.1, "The scripted answer to 'urgency' cannot have an expected level of -0.1 with Low as its most likely level: that level allows from 0, up to 1.6666666666667."],
+    'not a number' => [Urgency::Low, NAN, "The scripted answer to 'urgency' cannot have an expected level of NAN with Low as its most likely level: that level allows from 0, up to 1.6666666666667."],
+    // {Low, High} at 0.5 each: High would only tie with Low, and a tie goes to the lower level.
+    'at the lower edge' => [Urgency::High, 1.0, "The scripted answer to 'urgency' cannot have an expected level of 1 with High as its most likely level: that level allows more than 1, up to 2.5."],
 ]);
+
+it('takes the upper edge, where the case ties only with higher levels and a tie goes to the lowest', function (): void {
+    $answer = FakeAnswer::score(fakeUrgency(), Urgency::Medium, expected: 2.0)->answerFor('laya');
+
+    expect(probabilities($answer))->toEqualWithDelta([0 => 0.0, 1 => 0.5, 2 => 0.0, 3 => 0.5], 1e-12);
+});
 
 it('refuses a score case from another enum, whatever the expected level', function (?float $expected): void {
     FakeAnswer::score(fakeUrgency(), Severity::Major, $expected);
