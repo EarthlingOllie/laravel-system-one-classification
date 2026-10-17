@@ -9,6 +9,7 @@ use Closure;
 use EarthlingOllie\SystemOneClassification\Domain\Decision;
 use EarthlingOllie\SystemOneClassification\Domain\Question\ChoiceQuestion;
 use EarthlingOllie\SystemOneClassification\Domain\Question\QuestionHandle;
+use EarthlingOllie\SystemOneClassification\Domain\Question\ScoreQuestion;
 use EarthlingOllie\SystemOneClassification\Domain\Question\YesNoQuestion;
 use EarthlingOllie\SystemOneClassification\Exceptions\HostUnavailable;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidDecision;
@@ -16,6 +17,7 @@ use EarthlingOllie\SystemOneClassification\Exceptions\MalformedResponse;
 use EarthlingOllie\SystemOneClassification\Exceptions\RejectedByModel;
 use EarthlingOllie\SystemOneClassification\Result\Answer\Answer;
 use EarthlingOllie\SystemOneClassification\Result\Answer\ChoiceAnswer;
+use EarthlingOllie\SystemOneClassification\Result\Answer\ScoreAnswer;
 use EarthlingOllie\SystemOneClassification\Result\Answer\YesNoAnswer;
 use EarthlingOllie\SystemOneClassification\Result\Confidence;
 use EarthlingOllie\SystemOneClassification\Result\Distribution;
@@ -23,10 +25,12 @@ use EarthlingOllie\SystemOneClassification\Result\Result;
 use EarthlingOllie\SystemOneClassification\Transport\Response;
 use stdClass;
 
+use function array_column;
 use function array_diff;
 use function array_is_list;
 use function array_keys;
 use function array_map;
+use function count;
 use function implode;
 use function is_array;
 use function is_float;
@@ -34,6 +38,9 @@ use function is_int;
 use function is_string;
 use function json_decode;
 use function json_encode;
+use function ksort;
+use function max;
+use function min;
 
 /**
  * Maps a Decision to the System One wire format (`POST /v1/systemone`, shared by laya-serve
@@ -142,6 +149,14 @@ final readonly class SystemOneCodec
                 ],
                 'decode' => fn (array $answer, string $body): ChoiceAnswer => $this->decodeChoice($question, $answer, $body),
             ],
+            $question instanceof ScoreQuestion => [
+                'request' => static fn (): array => [
+                    'type' => 'score',
+                    'instructions' => $question->instructions,
+                    'criteria' => array_column($question->levels(), 'description'),
+                ],
+                'decode' => fn (array $answer, string $body): ScoreAnswer => $this->decodeScore($question, $answer, $body),
+            ],
             $question instanceof YesNoQuestion => [
                 'request' => static fn (): array => ['type' => 'noul', 'instructions' => $question->instructions],
                 'decode' => static fn (array $answer, string $body): YesNoAnswer => self::decodeYesNo($question->key, $answer, $body),
@@ -213,21 +228,168 @@ final readonly class SystemOneCodec
             throw MalformedResponse::because("The answer for '{$key}' has no string 'choice'.", $body);
         }
 
-        // JSON object keys that are whole numbers come back from json_decode() as int keys, and
-        // an object keyed "0", "1", ... as a list, so labels are matched as strings.
+        $labelled = [];
+        $chosen = null;
+
+        foreach ($question->options() as ['case' => $case]) {
+            $label = (string) $case->value;
+            $labelled[] = ['label' => $label, 'case' => $case];
+
+            if ($label === $choice) {
+                $chosen = $case;
+            }
+        }
+
+        $distribution = self::distribution($key, $answer, $labelled, "options of {$question->enum}", $body);
+
+        if ($chosen === null) {
+            throw MalformedResponse::because("The answer for '{$key}' names '{$choice}', which is not an option of {$question->enum}.", $body);
+        }
+
+        return new ChoiceAnswer(
+            $chosen,
+            self::answerConfidence($key, $answer, $distribution->probabilityOf($chosen), $body),
+            $this->confidence($key, $answer, $body),
+            $distribution,
+        );
+    }
+
+    /**
+     * @template TEnum of BackedEnum
+     *
+     * @param  ScoreQuestion<TEnum>  $question
+     * @param  array<mixed>  $answer
+     * @return ScoreAnswer<TEnum>
+     */
+    private function decodeScore(ScoreQuestion $question, array $answer, string $body): ScoreAnswer
+    {
+        $key = $question->key;
+        $type = $answer['type'] ?? null;
+
+        if ($type !== 'score') {
+            throw MalformedResponse::because("The answer for '{$key}' should have type 'score', got ".json_encode($type, JSON_THROW_ON_ERROR).'.', $body);
+        }
+
+        // The server knows the levels only by index, lowest first: criteria went out as a
+        // list, and legend and probabilities come back keyed "0", "1", ... (int keys here).
+        $levels = $question->levels();
+        $highestIndex = count($levels) - 1;
+        $score = $answer['score'] ?? null;
+
+        if (! is_int($score) && ! is_float($score)) {
+            throw MalformedResponse::because("The answer for '{$key}' has no numeric 'score'.", $body);
+        }
+
+        if ($score < 0 || $score > $highestIndex) {
+            throw MalformedResponse::because("The answer for '{$key}' has a 'score' outside the level indexes 0 to {$highestIndex}: {$score}.", $body);
+        }
+
+        self::checkLegend($question, $answer, $body);
+
+        $labelled = [];
+
+        foreach ($levels as $index => ['case' => $case]) {
+            $labelled[] = ['label' => (string) $index, 'case' => $case];
+        }
+
+        $distribution = self::distribution($key, $answer, $labelled, "levels of {$question->enum}", $body);
+        $value = $levels[0]['case'];
+
+        // The first of equally likely levels wins, as with the server's argmax.
+        foreach ($distribution->entries() as ['case' => $case, 'probability' => $probability]) {
+            if ($probability > $distribution->probabilityOf($value)) {
+                $value = $case;
+            }
+        }
+
+        return new ScoreAnswer(
+            $value,
+            self::expectedLevel($levels, (float) $score),
+            self::answerConfidence($key, $answer, $distribution->probabilityOf($value), $body),
+            $this->confidence($key, $answer, $body),
+            $distribution,
+        );
+    }
+
+    /**
+     * The server's expected level index placed on the backing values: index i is level i's
+     * value, and a fraction between two indexes lies the same fraction between their values.
+     * For levels backed by 0..n-1 that is the index itself.
+     *
+     * Walked step by step from the lowest level: each step from level i - 1 to level i adds
+     * the part of it the score covers (none below it, all of it above it) times its width.
+     *
+     * @param  non-empty-list<array{case: BackedEnum, description: string}>  $levels
+     * @param  float  $score  between 0 and the highest index
+     */
+    private static function expectedLevel(array $levels, float $score): float
+    {
+        $expected = 0.0;
+        $previous = null;
+
+        foreach ($levels as $index => ['case' => $case]) {
+            $value = (int) $case->value;
+            // ($index - 1) first: subtracting a whole number from the score is exact, so levels
+            // backed by 0..n-1 give back the server's score unchanged.
+            $expected += $previous === null ? $value : max(0.0, min(1.0, $score - ($index - 1))) * ($value - $previous);
+            $previous = $value;
+        }
+
+        return $expected;
+    }
+
+    /**
+     * The legend must name every level, by index, with the description that was sent: a
+     * mismatch means the server scored some other scale.
+     *
+     * @template TEnum of BackedEnum
+     *
+     * @param  ScoreQuestion<TEnum>  $question
+     * @param  array<mixed>  $answer
+     */
+    private static function checkLegend(ScoreQuestion $question, array $answer, string $body): void
+    {
+        $legend = $answer['legend'] ?? null;
+
+        if (! is_array($legend)) {
+            throw MalformedResponse::because("The answer for '{$question->key}' has no 'legend' object.", $body);
+        }
+
+        $expected = array_column($question->levels(), 'description');
+        $sorted = $legend;
+        ksort($sorted);
+
+        if ($sorted !== $expected) {
+            $json = static fn (array $legend): string => json_encode($legend, JSON_THROW_ON_ERROR | JSON_FORCE_OBJECT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+            throw MalformedResponse::because("The answer for '{$question->key}' has a legend that does not match the levels of {$question->enum}: expected {$json($expected)}, got {$json($legend)}.", $body);
+        }
+    }
+
+    /**
+     * The answer's `probabilities`, one per label, as a Distribution in the order given.
+     *
+     * JSON object keys that are whole numbers come back from json_decode() as int keys, and an
+     * object keyed "0", "1", ... as a list, so labels are matched as strings.
+     *
+     * @template TEnum of BackedEnum
+     *
+     * @param  array<mixed>  $answer
+     * @param  non-empty-list<array{label: string, case: TEnum}>  $labelled
+     * @param  string  $labels  what the labels are, for the message ("options of Department")
+     * @return Distribution<TEnum>
+     */
+    private static function distribution(string $key, array $answer, array $labelled, string $labels, string $body): Distribution
+    {
         $probabilities = $answer['probabilities'] ?? null;
 
         if (! is_array($probabilities)) {
             throw MalformedResponse::because("The answer for '{$key}' has no 'probabilities' object.", $body);
         }
 
-        $chosen = null;
         $entries = [];
-        $labels = [];
 
-        foreach ($question->options() as ['case' => $case]) {
-            $label = (string) $case->value;
-            $labels[] = $label;
+        foreach ($labelled as ['label' => $label, 'case' => $case]) {
             $probability = $probabilities[$label] ?? null;
 
             if (! is_int($probability) && ! is_float($probability)) {
@@ -239,39 +401,34 @@ final readonly class SystemOneCodec
             }
 
             $entries[] = ['case' => $case, 'probability' => (float) $probability];
-
-            if ($label === $choice) {
-                $chosen = $case;
-            }
         }
 
         // array_diff() compares as strings, so int keys match their whole-number labels.
-        $extra = array_diff(array_keys($probabilities), $labels);
+        $extra = array_diff(array_keys($probabilities), array_column($labelled, 'label'));
 
         if ($extra !== []) {
             $quoted = implode(', ', array_map(static fn (int|string $label): string => "'{$label}'", $extra));
 
-            throw MalformedResponse::because("The answer for '{$key}' has probabilities for labels that are not options of {$question->enum}: {$quoted}.", $body);
+            throw MalformedResponse::because("The answer for '{$key}' has probabilities for labels that are not {$labels}: {$quoted}.", $body);
         }
 
-        if ($chosen === null) {
-            throw MalformedResponse::because("The answer for '{$key}' names '{$choice}', which is not an option of {$question->enum}.", $body);
-        }
+        return new Distribution($entries);
+    }
 
+    /**
+     * The model's raw `confidence`, tagged with this codec's profile.
+     *
+     * @param  array<mixed>  $answer
+     */
+    private function confidence(string $key, array $answer, string $body): Confidence
+    {
         $confidence = $answer['confidence'] ?? null;
 
         if (! is_int($confidence) && ! is_float($confidence)) {
             throw MalformedResponse::because("The answer for '{$key}' has no numeric 'confidence'.", $body);
         }
 
-        $distribution = new Distribution($entries);
-
-        return new ChoiceAnswer(
-            $chosen,
-            self::answerConfidence($key, $answer, $distribution->probabilityOf($chosen), $body),
-            new Confidence((float) $confidence, $this->profile),
-            $distribution,
-        );
+        return new Confidence((float) $confidence, $this->profile);
     }
 
     /**
