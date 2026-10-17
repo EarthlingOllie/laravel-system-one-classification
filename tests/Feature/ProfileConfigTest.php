@@ -32,10 +32,10 @@ function sendThrough(array $connection, ?int $options = null, ?string $model = n
     $decision = Decision::about(Context::text('x'))->ask(Question::yesNo('churn', 'Cancel?'));
 
     if ($options !== null) {
-        $labels = array_map(static fn (int $i): string => "option_{$i}", range(0, $options - 1));
+        $labels = array_map(OptionsEnum::label(...), range(0, $options - 1));
         $answers['label'] = [
-            'type' => 'choice', 'choice' => 'option_0', 'confidence' => 0.5,
-            'probabilities' => [...array_fill_keys($labels, 0.0), 'option_0' => 1.0],
+            'type' => 'choice', 'choice' => 'label_000', 'confidence' => 0.5,
+            'probabilities' => [...array_fill_keys($labels, 0.0), 'label_000' => 1.0],
         ];
         $decision = $decision->ask(Question::choice('label', OptionsEnum::withCases($options), 'Which label fits?'));
     }
