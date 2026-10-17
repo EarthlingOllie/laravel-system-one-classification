@@ -84,30 +84,24 @@ final readonly class Decision
 
     /**
      * A new decision that tells the server the context's language (`lang`), such as 'de'.
+     * Whitespace around the code is trimmed.
      *
      * @throws InvalidDecision when the code is blank
      */
     public function withLanguage(string $code): self
     {
-        if (trim($code) === '') {
-            throw InvalidDecision::emptyLanguage('The language code');
-        }
-
-        return new self($this->context, $this->questions, $this->minConfidence, $code, $this->languageHint, $this->maxLength, $this->headMaxLength);
+        return new self($this->context, $this->questions, $this->minConfidence, self::code('The language code', $code), $this->languageHint, $this->maxLength, $this->headMaxLength);
     }
 
     /**
      * A new decision with a language hint (`lang_guess`) for the server's language detection.
+     * Whitespace around the code is trimmed.
      *
      * @throws InvalidDecision when the code is blank
      */
     public function withLanguageHint(string $code): self
     {
-        if (trim($code) === '') {
-            throw InvalidDecision::emptyLanguage('The language hint');
-        }
-
-        return new self($this->context, $this->questions, $this->minConfidence, $this->language, $code, $this->maxLength, $this->headMaxLength);
+        return new self($this->context, $this->questions, $this->minConfidence, $this->language, self::code('The language hint', $code), $this->maxLength, $this->headMaxLength);
     }
 
     /**
@@ -136,6 +130,22 @@ final readonly class Decision
     public function questions(): array
     {
         return $this->questions;
+    }
+
+    /**
+     * @return non-empty-string the code without surrounding whitespace
+     *
+     * @throws InvalidDecision
+     */
+    private static function code(string $name, string $code): string
+    {
+        $code = trim($code);
+
+        if ($code === '') {
+            throw InvalidDecision::emptyLanguage($name);
+        }
+
+        return $code;
     }
 
     /**

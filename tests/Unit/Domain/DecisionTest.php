@@ -167,6 +167,13 @@ it('rejects a blank language or language hint', function (string $builder, strin
     'blank hint' => ['withLanguageHint', "\t", 'The language hint must not be empty.'],
 ]);
 
+it('trims whitespace around a language or language hint, as read from config or a query string', function (string $builder, string $property): void {
+    expect(Decision::about(Context::text('x'))->{$builder}(" de\n")->{$property})->toBe('de');
+})->with([
+    'language' => ['withLanguage', 'language'],
+    'hint' => ['withLanguageHint', 'languageHint'],
+]);
+
 it('rejects a length that is not a positive whole number', function (string $builder, int $length, string $message): void {
     expect(fn () => Decision::about(Context::text('x'))->{$builder}($length))->toThrow(InvalidDecision::class, $message);
 })->with([
