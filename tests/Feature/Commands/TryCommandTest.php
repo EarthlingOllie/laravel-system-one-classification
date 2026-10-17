@@ -436,3 +436,16 @@ it('prints only the routing the server reports', function (array $root, string $
     'a checkpoint without a reason' => [['routing' => ['model' => 'english']], 'checkpoint english'],
     'nothing' => [[], 'not reported'],
 ]);
+
+it('asks for a question, and says only that, when none is given', function (): void {
+    Http::fake();
+    $command = new TryCommand;
+    $command->setLaravel(app());
+    $tester = new CommandTester($command);
+
+    $tester->execute(['text' => 'x'], ['interactive' => false, 'capture_stderr_separately' => true]);
+
+    expect($tester->getStatusCode())->toBe(Command::INVALID)
+        ->and(trim($tester->getErrorOutput()))->toBe('Ask at least one question, e.g. --yes-no="Does the customer threaten to cancel?"');
+    Http::assertNothingSent();
+});

@@ -111,7 +111,7 @@ final readonly class DecisionClient implements Decider
         try {
             $batches = $this->codec->encodeBatches($decision, $contexts, $this->model);
             [$results, $cached] = $this->cache === null
-                ? [$this->sendBatches($decision, $batches)[0], []]
+                ? [$this->sendBatches($decision, $batches), []]
                 : $this->resolveManyCached($this->cache, $decision, $contexts, $batches);
         } catch (SystemOneException $exception) {
             foreach (self::asked($contexts, $decision) as $asked) {
@@ -166,24 +166,35 @@ final readonly class DecisionClient implements Decider
      * Sends the batch requests, one after another.
      *
      * @param  non-empty-list<array{states: non-empty-list<string|array<string, mixed>>, questions: array<string, array<string, mixed>>}>  $batches
-     * @return array{ResultSet, list<Response>} the results, and each one's single-call response
      *
      * @throws SystemOneException
      */
-    private function sendBatches(Decision $decision, array $batches): array
+    private function sendBatches(Decision $decision, array $batches): ResultSet
     {
         $results = new ResultSet([], new Usage(0, 0));
-        $entries = [];
 
         foreach ($batches as $body) {
-            $started = $this->clock->now();
-            $response = $this->transport->post(SystemOneCodec::BATCH_PATH, $body);
-            $latencyMs = ($this->clock->now() - $started) * 1000;
-            $results = $results->concat($this->codec->decodeBatch($decision, count($body['states']), $response, $latencyMs));
-            $entries = [...$entries, ...($this->cache === null ? [] : $this->codec->batchEntries($response))];
+            $results = $results->concat($this->sendBatch($decision, $body)[0]);
         }
 
-        return [$results, $entries];
+        return $results;
+    }
+
+    /**
+     * Sends one batch request, measuring its round trip for its results' meta.
+     *
+     * @param  array{states: non-empty-list<string|array<string, mixed>>, questions: array<string, array<string, mixed>>}  $body
+     * @return array{ResultSet, Response} the results and the response they were decoded from
+     *
+     * @throws SystemOneException
+     */
+    private function sendBatch(Decision $decision, array $body): array
+    {
+        $started = $this->clock->now();
+        $response = $this->transport->post(SystemOneCodec::BATCH_PATH, $body);
+        $latencyMs = ($this->clock->now() - $started) * 1000;
+
+        return [$this->codec->decodeBatch($decision, count($body['states']), $response, $latencyMs), $response];
     }
 
     /**
@@ -198,7 +209,7 @@ final readonly class DecisionClient implements Decider
         $revisions = $this->revisions($cache);
 
         if ($revisions === null) {
-            return [$this->sendBatches($decision, $batches)[0], []];
+            return [$this->sendBatches($decision, $batches), []];
         }
 
         $hits = [];
@@ -222,7 +233,8 @@ final readonly class DecisionClient implements Decider
             // Each request's answers are stored as soon as they decode, so a later request that
             // fails does not lose the ones already paid for: asking again sends only the rest.
             foreach ($this->codec->encodeBatches($decision, array_column($missing, 'context'), $this->model) as $body) {
-                [$answered, $entries] = $this->sendBatches($decision, [$body]);
+                [$answered, $response] = $this->sendBatch($decision, $body);
+                $entries = $this->codec->batchEntries($response);
                 $stored = count($sent);
                 $sent = $sent->concat($answered);
 

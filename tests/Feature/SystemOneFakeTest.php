@@ -482,4 +482,10 @@ it('abstains on a script whose answer confidence is below the decision\'s thresh
         ->and($result->get($urgency)->abstention)->toBe(Abstention::Abstained);
 
     expect(SystemOne::decide(aboutTicket()->ask($department)->withMinConfidence(0.6))->get($department)->abstention)->toBe(Abstention::Passed);
+
+    // A yes/no of 0.4 reports "no" at 0.6: below a 0.65 gate it abstains, above 0.55 it passes.
+    SystemOne::fake([FakeAnswer::yesNo($churn, 0.4)]);
+
+    expect(SystemOne::decide(aboutTicket()->ask($churn)->withMinConfidence(0.65))->get($churn)->abstention)->toBe(Abstention::Abstained)
+        ->and(SystemOne::decide(aboutTicket()->ask($churn)->withMinConfidence(0.55))->get($churn)->abstention)->toBe(Abstention::Passed);
 });
