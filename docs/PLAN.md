@@ -366,7 +366,8 @@ How the typing works:
   (`http://localhost:8000`), `api_key` from `SYSTEM_ONE_API_KEY` (empty means
   none) and `timeout` from `SYSTEM_ONE_TIMEOUT` (seconds; empty means 30).
   Since #4 each connection has a `profile` (`'laya'` or `'jev'`; unset or empty
-  means `'laya'`, anything else is `InvalidConfiguration`), which the manager
+  means `'laya'`, anything else is `InvalidConfiguration`; `local` takes it from
+  `SYSTEM_ONE_PROFILE`), which the manager
   passes to `SystemOneCodec` to tag the raw `confidence`. #6 swaps the string
   for a `ModelProfile`, keeping the config key. `SystemOneManager` reads the config on every call, so runtime `config()`
   changes apply.

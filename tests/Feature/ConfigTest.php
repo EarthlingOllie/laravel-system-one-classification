@@ -8,6 +8,7 @@ use EarthlingOllie\SystemOneClassification\Domain\Question;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidConfiguration;
 use EarthlingOllie\SystemOneClassification\Laravel\Facades\SystemOne;
 use EarthlingOllie\SystemOneClassification\Laravel\SystemOneServiceProvider;
+use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\Department;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\ServiceProvider;
@@ -49,6 +50,7 @@ it('points the local connection at http://localhost:8000 when SYSTEM_ONE_URL is 
         'SYSTEM_ONE_URL' => null,
         'SYSTEM_ONE_API_KEY' => null,
         'SYSTEM_ONE_TIMEOUT' => null,
+        'SYSTEM_ONE_PROFILE' => null,
     ]);
 
     expect($config)->toBe([
@@ -97,6 +99,23 @@ function decideWithEnvironment(array $environment): array
 
     return $sent;
 }
+
+it('takes the local profile from SYSTEM_ONE_PROFILE', function (): void {
+    expect(systemOneConfigWith(['SYSTEM_ONE_PROFILE' => 'jev'])['connections']['local']['profile'])->toBe('jev');
+});
+
+it('tags the raw confidence with the SYSTEM_ONE_PROFILE taken from the environment', function (): void {
+    config(['system-one' => systemOneConfigWith(['SYSTEM_ONE_URL' => 'http://jev.test', 'SYSTEM_ONE_PROFILE' => 'jev'])]);
+    $department = Question::choice('department', Department::class, 'Which department?');
+    Http::fake(['*' => Http::response(['answers' => ['department' => [
+        'type' => 'choice', 'choice' => 'billing', 'confidence' => 0.4,
+        'probabilities' => ['billing' => 0.8, 'technical' => 0.1, 'other' => 0.1],
+    ]]])]);
+
+    $answer = SystemOne::decide(Decision::about(Context::text('x'))->ask($department))->get($department);
+
+    expect($answer->confidence->profile)->toBe('jev');
+});
 
 it('uses the 30 second timeout when SYSTEM_ONE_TIMEOUT is set but empty', function (string $value): void {
     [, $options] = decideWithEnvironment(['SYSTEM_ONE_URL' => 'http://laya.test', 'SYSTEM_ONE_TIMEOUT' => $value]);

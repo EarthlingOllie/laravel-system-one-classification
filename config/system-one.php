@@ -24,8 +24,8 @@ return [
             // call after a start can take longer.
             'timeout' => env('SYSTEM_ONE_TIMEOUT', 30),
             // The model behind the URL: 'laya' or 'jev'. It tags each answer's raw `confidence`,
-            // which is not comparable across models. Unset means 'laya'.
-            'profile' => 'laya',
+            // which is not comparable across models. Unset or empty means 'laya'.
+            'profile' => env('SYSTEM_ONE_PROFILE', 'laya'),
         ],
     ],
 ];
