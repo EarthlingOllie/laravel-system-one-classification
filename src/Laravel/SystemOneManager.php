@@ -25,7 +25,7 @@ use function is_string;
  *
  * Config is read on every call, so runtime config() changes apply.
  */
-final readonly class SystemOneManager
+final readonly class SystemOneManager implements ConnectionResolver
 {
     /** The model profiles a connection can name; #6 turns each into a ModelProfile. */
     private const array PROFILES = ['laya', 'jev'];

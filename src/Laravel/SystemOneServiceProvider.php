@@ -20,6 +20,8 @@ final class SystemOneServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(self::configFile(), 'system-one');
 
         $this->app->singleton(SystemOneManager::class);
+        // Resolved through the manager's binding, so SystemOne::fake() (which swaps that binding) replaces it too.
+        $this->app->alias(SystemOneManager::class, ConnectionResolver::class);
     }
 
     public function boot(): void
