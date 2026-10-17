@@ -12,6 +12,9 @@ use EarthlingOllie\SystemOneClassification\Laravel\Events\DecisionMade;
 use EarthlingOllie\SystemOneClassification\Laravel\Facades\SystemOne;
 use EarthlingOllie\SystemOneClassification\Protocol\SystemOneCodec;
 use EarthlingOllie\SystemOneClassification\Result\Result;
+use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\BillingOnlyDepartment;
+use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\LocalisedDepartment;
+use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\Translator;
 use Illuminate\Cache\ArrayStore;
 use Illuminate\Contracts\Cache\Store;
 use Illuminate\Http\Client\Request;
@@ -132,6 +135,67 @@ it('misses the cache when anything the key covers changes, and still hits for th
         return SystemOne::decide(ticket());
     }],
 ]);
+
+/** Answers every choice question with its first option, so choice decisions can be cached. */
+function fakeChoiceServer(): void
+{
+    Http::fake(function (Request $request) {
+        if (str_ends_with($request->url(), '/health')) {
+            return Http::response(['status' => 'ok', 'revisions' => ['english' => 'rev-a']]);
+        }
+
+        $answers = [];
+        foreach ((array) $request->data()['questions'] as $key => $question) {
+            $labels = array_keys((array) $question['criteria']);
+            $answers[$key] = [
+                'type' => 'choice',
+                'choice' => (string) $labels[0],
+                'probabilities' => array_fill_keys($labels, 1 / count($labels)),
+                'confidence' => 0.0,
+            ];
+        }
+
+        return Http::response(['answers' => $answers, 'routing' => ['model' => 'english']]);
+    });
+}
+
+// The key hashes every question as the codec sends it, so a choice's options and their
+// descriptions (#4) are part of it: the model reads both.
+it('misses the cache when a choice\'s options or their descriptions change, and still hits for the original', function (Closure $change): void {
+    fakeChoiceServer();
+    $ask = fn (string $enum): Result => SystemOne::decide(Decision::about(Context::text('We were billed twice.'))
+        ->ask(Question::choice('department', $enum, 'Which department should handle this?')));
+    Translator::$locale = 'en';
+    $ask(LocalisedDepartment::class);
+
+    try {
+        $change($ask);
+    } finally {
+        Translator::$locale = 'en';
+    }
+    $missed = decisionsSent();
+    $ask(LocalisedDepartment::class);
+
+    expect($missed)->toBe(2)
+        ->and(decisionsSent())->toBe(2);
+})->with([
+    'an option fewer' => [fn (Closure $ask) => $ask(BillingOnlyDepartment::class)],
+    'the descriptions, in another locale' => [function (Closure $ask) {
+        Translator::$locale = 'de';
+
+        return $ask(LocalisedDepartment::class);
+    }],
+]);
+
+it('misses the cache for a model the decision pins', function (): void {
+    fakeServer();
+    SystemOne::decide(ticket());
+
+    SystemOne::decide(ticket()->withModel('multilingual'));
+    SystemOne::decide(ticket());
+
+    expect(decisionsSent())->toBe(2);
+});
 
 it('stores the status and body under a key scoped to the connection', function (): void {
     fakeServer();

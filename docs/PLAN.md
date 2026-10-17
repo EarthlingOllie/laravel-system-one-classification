@@ -579,8 +579,8 @@ How the typing works:
   - Each connection may set `model` (`SYSTEM_ONE_MODEL`); on the integration
     branch this is #9's key: sent when a decision pins none, a pin
     (`withModel()`, #6) wins, and it is held to the profile.
-  - The miss tests cover each part of the key the codec can send today. #4
-    must add one for a choice's options and for their descriptions.
+  - The miss tests cover each part of the key the codec sends, a choice's
+    options and their descriptions (#4) and a pinned model (#6) included.
 - Artisan commands:
   - `system-one:install` publishes the config and Compose files.
   - `system-one:health` checks the server's health and which checkpoints are
