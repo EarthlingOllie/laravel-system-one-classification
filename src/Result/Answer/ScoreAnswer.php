@@ -36,7 +36,8 @@ final readonly class ScoreAnswer implements Answer
      *
      * @throws InvalidProbability when answerConfidence is outside [0, 1]
      * @throws InvalidDistribution when the value is not one of the distribution's cases, the
-     *                             enum is not int-backed, or no level has any probability
+     *                             enum is not int-backed, no level has any probability, or
+     *                             another level is more probable than the value
      */
     public function __construct(
         public BackedEnum $value,
@@ -45,9 +46,16 @@ final readonly class ScoreAnswer implements Answer
         public Distribution $distribution,
     ) {
         Probability::check('The answer confidence', $answerConfidence);
-        $distribution->probabilityOf($value);
+        $probability = $distribution->probabilityOf($value);
 
         $this->expected = self::expected($value::class, $distribution);
+
+        // Any of equally likely levels will do; the codec takes the lowest of them.
+        foreach ($distribution->entries() as ['probability' => $other]) {
+            if ($other > $probability) {
+                throw InvalidDistribution::notMostLikely($value, $probability, $other);
+            }
+        }
     }
 
     /**

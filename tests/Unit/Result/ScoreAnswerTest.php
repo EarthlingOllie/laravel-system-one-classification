@@ -42,17 +42,19 @@ it('holds the most likely level, both confidences and the distribution', functio
         ->and($answer->distribution->cases())->toBe([Severity::Minor, Severity::Major, Severity::Critical]);
 });
 
-it('takes the expected level over the backing values from the distribution', function (float $minor, float $major, float $critical, float $expected): void {
-    expect(majorAnswer(distribution: severityDistribution($minor, $major, $critical))->expected)->toBe($expected);
+it('takes the expected level over the backing values from the distribution', function (Severity $value, float $minor, float $major, float $critical, float $expected): void {
+    $answer = new ScoreAnswer($value, 0.5, new Confidence(0.2, 'laya'), severityDistribution($minor, $major, $critical));
+
+    expect($answer->expected)->toBe($expected);
 })->with([
-    'all on the lowest level' => [1.0, 0.0, 0.0, 1.0],
-    'all on the highest level' => [0.0, 0.0, 1.0, 10.0],
-    'all on the middle level' => [0.0, 1.0, 0.0, 5.0],
-    'a quarter, a half, a quarter' => [0.25, 0.5, 0.25, 5.25],
+    'all on the lowest level' => [Severity::Minor, 1.0, 0.0, 0.0, 1.0],
+    'all on the highest level' => [Severity::Critical, 0.0, 0.0, 1.0, 10.0],
+    'all on the middle level' => [Severity::Major, 0.0, 1.0, 0.0, 5.0],
+    'a quarter, a half, a quarter' => [Severity::Major, 0.25, 0.5, 0.25, 5.25],
     // Not the middle level (5), as placing an expected index on the values would give.
-    'half on each end' => [0.5, 0.0, 0.5, 5.5],
+    'half on each end' => [Severity::Minor, 0.5, 0.0, 0.5, 5.5],
     // The server rounds each probability, so they need not add up to 1: they are normalised.
-    'probabilities that add up to a half' => [0.25, 0.0, 0.25, 5.5],
+    'probabilities that add up to a half' => [Severity::Minor, 0.25, 0.0, 0.25, 5.5],
 ]);
 
 it('takes the expected level by backing value, whatever order the distribution lists the levels in', function (): void {
@@ -67,7 +69,7 @@ it('takes the expected level by backing value, whatever order the distribution l
 
 it('normalises probabilities that do not add up to 1 in floating point', function (): void {
     // Probabilities that do not add up to 1 in floating point, nearly all on the top level.
-    $answer = majorAnswer(distribution: severityDistribution(0.1, 0.2, 0.7000000000000001));
+    $answer = new ScoreAnswer(Severity::Critical, 0.7, new Confidence(0.2, 'laya'), severityDistribution(0.1, 0.2, 0.7000000000000001));
 
     expect($answer->expected)->toBeGreaterThanOrEqual(1.0)->toBeLessThanOrEqual(10.0)
         ->and($answer->expected)->toEqualWithDelta(0.1 + 0.2 * 5 + 0.7 * 10, 1e-12);
@@ -121,4 +123,16 @@ it('cannot be changed after construction', function (): void {
     $answer = majorAnswer();
 
     expect(fn () => $answer->expected = 1.0)->toThrow(Error::class, 'Cannot modify readonly property');
+});
+
+it('rejects a value that is not a most likely level', function (): void {
+    // Critical is the most likely level (0.5), not Major (0.25).
+    majorAnswer(distribution: severityDistribution(0.25, 0.25, 0.5));
+})->throws(InvalidDistribution::class, 'A score answer\'s value must be a most likely level: '.Severity::class.'::Major has probability 0.25, but another level has 0.5.');
+
+it('takes any of equally likely levels as the value', function (): void {
+    $answer = new ScoreAnswer(Severity::Critical, 0.5, new Confidence(0.2, 'laya'), severityDistribution(0.5, 0.0, 0.5));
+
+    expect($answer->value)->toBe(Severity::Critical)
+        ->and($answer->expected)->toBe(5.5);
 });
