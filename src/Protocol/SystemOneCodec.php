@@ -22,6 +22,7 @@ use stdClass;
 
 use function array_filter;
 use function array_is_list;
+use function get_object_vars;
 use function is_array;
 use function is_bool;
 use function is_float;
@@ -129,7 +130,7 @@ final readonly class SystemOneCodec
 
         $decoded = [];
 
-        foreach ((array) $revisions as $checkpoint => $revision) {
+        foreach (get_object_vars($revisions) as $checkpoint => $revision) {
             if ($revision !== null && ! is_string($revision)) {
                 throw MalformedResponse::because("The health response's revision for '{$checkpoint}' is not a string.", $response->body);
             }
