@@ -30,27 +30,27 @@ it('builds a score question over an int-backed enum with its key and instruction
         ->and($question->answerType())->toBe(ScoreAnswer::class);
 });
 
-it('has one level per case, each with its #[Describe] text', function (): void {
+it('has one level per case, each with its backing value and #[Describe] text', function (): void {
     expect(Question::score('urgency', Urgency::class, 'How urgent is this?')->levels())->toBe([
-        ['case' => Urgency::Low, 'description' => 'can wait'],
-        ['case' => Urgency::Medium, 'description' => 'soon'],
-        ['case' => Urgency::High, 'description' => 'today'],
-        ['case' => Urgency::Critical, 'description' => 'blocking'],
+        ['case' => Urgency::Low, 'value' => 0, 'description' => 'can wait'],
+        ['case' => Urgency::Medium, 'value' => 1, 'description' => 'soon'],
+        ['case' => Urgency::High, 'value' => 2, 'description' => 'today'],
+        ['case' => Urgency::Critical, 'value' => 3, 'description' => 'blocking'],
     ]);
 });
 
 it('orders the levels by backing value, not by the order the cases are declared in', function (): void {
     expect(Question::score('severity', Severity::class, 'How severe is this?')->levels())->toBe([
-        ['case' => Severity::Minor, 'description' => 'a cosmetic issue'],
-        ['case' => Severity::Major, 'description' => 'a feature is broken'],
-        ['case' => Severity::Critical, 'description' => 'the service is down'],
+        ['case' => Severity::Minor, 'value' => 1, 'description' => 'a cosmetic issue'],
+        ['case' => Severity::Major, 'value' => 5, 'description' => 'a feature is broken'],
+        ['case' => Severity::Critical, 'value' => 10, 'description' => 'the service is down'],
     ]);
 });
 
 it('prefers DescribesCases over the #[Describe] attribute', function (): void {
     expect(Question::score('severity', TranslatedSeverity::class, 'Wie dringend?')->levels())->toBe([
-        ['case' => TranslatedSeverity::Low, 'description' => 'kann warten'],
-        ['case' => TranslatedSeverity::High, 'description' => 'dringend'],
+        ['case' => TranslatedSeverity::Low, 'value' => 1, 'description' => 'kann warten'],
+        ['case' => TranslatedSeverity::High, 'value' => 2, 'description' => 'dringend'],
     ]);
 });
 

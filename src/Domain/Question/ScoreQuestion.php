@@ -7,10 +7,10 @@ namespace EarthlingOllie\SystemOneClassification\Domain\Question;
 use BackedEnum;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidDecision;
 use EarthlingOllie\SystemOneClassification\Result\Answer\ScoreAnswer;
-use ReflectionEnum;
 
-use function array_map;
 use function enum_exists;
+use function is_int;
+use function is_subclass_of;
 use function trim;
 use function usort;
 
@@ -31,7 +31,7 @@ final readonly class ScoreQuestion implements QuestionHandle
     /** @var non-empty-string */
     public string $key;
 
-    /** @var non-empty-list<array{case: TEnum, description: string}> */
+    /** @var non-empty-list<array{case: TEnum, value: int, description: string}> */
     private array $levels;
 
     /**
@@ -46,29 +46,38 @@ final readonly class ScoreQuestion implements QuestionHandle
         $this->key = QuestionKey::validate($key);
         Instructions::validate($key, $instructions);
 
-        // enum_exists() first: an interface that extends BackedEnum has no backing type to read.
-        if (! enum_exists($enum) || (string) new ReflectionEnum($enum)->getBackingType() !== 'int') {
+        // enum_exists() too: an interface that extends BackedEnum is a subclass of it, but has
+        // no cases() to call.
+        if (! enum_exists($enum) || ! is_subclass_of($enum, BackedEnum::class)) {
             throw InvalidDecision::notIntBackedEnum($key, $enum);
         }
 
-        $cases = $enum::cases();
+        $levels = [];
 
-        if ($cases === []) {
+        // A string-backed enum is refused at its first case (one without cases has no levels
+        // either way). Checking each value, rather than the enum's backing type, gives the
+        // levels their int values without a cast.
+        foreach ($enum::cases() as $case) {
+            if (! is_int($case->value)) {
+                throw InvalidDecision::notIntBackedEnum($key, $enum);
+            }
+
+            $levels[] = ['case' => $case, 'value' => $case->value, 'description' => self::describe($key, $case)];
+        }
+
+        if ($levels === []) {
             throw InvalidDecision::noLevels($key, $enum);
         }
 
-        usort($cases, static fn (BackedEnum $a, BackedEnum $b): int => $a->value <=> $b->value);
+        usort($levels, static fn (array $a, array $b): int => $a['value'] <=> $b['value']);
 
-        $this->levels = array_map(
-            static fn (BackedEnum $case): array => ['case' => $case, 'description' => self::describe($key, $case)],
-            $cases,
-        );
+        $this->levels = $levels;
     }
 
     /**
-     * Every level with its description, lowest backing value first.
+     * Every level with its backing value and description, lowest backing value first.
      *
-     * @return non-empty-list<array{case: TEnum, description: string}>
+     * @return non-empty-list<array{case: TEnum, value: int, description: string}>
      */
     public function levels(): array
     {

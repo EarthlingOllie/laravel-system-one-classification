@@ -224,6 +224,10 @@ it('raises MalformedResponse for a score answer that does not match the protocol
         ['legend' => ['0' => 'blocking', '1' => 'today', '2' => 'soon', '3' => 'can wait']],
         "The answer for 'urgency' has a legend that does not match the levels of ".Urgency::class.': expected {"0":"can wait","1":"soon","2":"today","3":"blocking"}, got {"0":"blocking","1":"today","2":"soon","3":"can wait"}.',
     ],
+    'a legend shown with its slashes and accents as they are' => [
+        ['legend' => ['0' => 'can wait', '1' => 'soon', '2' => 'today/tonight', '3' => 'très urgent']],
+        "The answer for 'urgency' has a legend that does not match the levels of ".Urgency::class.': expected {"0":"can wait","1":"soon","2":"today","3":"blocking"}, got {"0":"can wait","1":"soon","2":"today/tonight","3":"très urgent"}.',
+    ],
     'no probabilities' => [['probabilities' => null], "The answer for 'urgency' has no 'probabilities' object."],
     'a probability missing' => [
         ['probabilities' => ['0' => 0.1, '1' => 0.1, '3' => 0.8]],

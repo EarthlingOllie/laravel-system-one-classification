@@ -289,7 +289,7 @@ final readonly class SystemOneCodec
         $labelled = [];
 
         foreach ($levels as $index => ['case' => $case]) {
-            $labelled[] = ['label' => (string) $index, 'case' => $case];
+            $labelled[] = ['label' => $index, 'case' => $case];
         }
 
         $distribution = self::distribution($key, $answer, $labelled, "levels of {$question->enum}", $body);
@@ -319,7 +319,7 @@ final readonly class SystemOneCodec
      * Walked step by step from the lowest level: each step from level i - 1 to level i adds
      * the part of it the score covers (none below it, all of it above it) times its width.
      *
-     * @param  non-empty-list<array{case: BackedEnum, description: string}>  $levels
+     * @param  non-empty-list<array{case: BackedEnum, value: int, description: string}>  $levels
      * @param  float  $score  between 0 and the highest index
      */
     private static function expectedLevel(array $levels, float $score): float
@@ -327,8 +327,7 @@ final readonly class SystemOneCodec
         $expected = 0.0;
         $previous = null;
 
-        foreach ($levels as $index => ['case' => $case]) {
-            $value = (int) $case->value;
+        foreach ($levels as $index => ['value' => $value]) {
             // ($index - 1) first: subtracting a whole number from the score is exact, so levels
             // backed by 0..n-1 give back the server's score unchanged.
             $expected += $previous === null ? $value : max(0.0, min(1.0, $score - ($index - 1))) * ($value - $previous);
@@ -370,12 +369,13 @@ final readonly class SystemOneCodec
      * The answer's `probabilities`, one per label, as a Distribution in the order given.
      *
      * JSON object keys that are whole numbers come back from json_decode() as int keys, and an
-     * object keyed "0", "1", ... as a list, so labels are matched as strings.
+     * object keyed "0", "1", ... as a list; PHP looks a whole-number string label up as that
+     * int key, so a label may be either.
      *
      * @template TEnum of BackedEnum
      *
      * @param  array<mixed>  $answer
-     * @param  non-empty-list<array{label: string, case: TEnum}>  $labelled
+     * @param  non-empty-list<array{label: int|string, case: TEnum}>  $labelled
      * @param  string  $labels  what the labels are, for the message ("options of Department")
      * @return Distribution<TEnum>
      */
