@@ -388,6 +388,14 @@ How the typing works:
     that is refused or unreadable, and an entry that does not decode are
     reported through the exception handler and skipped; an unreachable server
     fails the decision as sending it would.
+  - Trade-offs kept on purpose: the /health read costs one cheap GET per
+    cached decision, hits included, so a revision change is never missed (a
+    memo of the revisions would serve stale answers for its lifetime); a
+    /health that keeps failing is reported on every decision, as a store that
+    keeps failing is, so the operator sees that caching does nothing. A
+    listener that throws propagates, as Laravel's synchronous listeners do;
+    queue the listener to isolate it. #9 should decide how hosts without
+    /health (Jev) cache, if at all.
   - Each connection may set `model` (`SYSTEM_ONE_MODEL`), sent as `model` with
     every decision; empty lets the server route. #6 adds `withModel()` per
     decision and #9 the per-connection defaults for remote hosts.
