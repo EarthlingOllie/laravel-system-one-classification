@@ -286,9 +286,9 @@ it('asserts a decision matching a callback was made', function (): void {
     SystemOne::decide(aboutTicket('first')->ask(fakeChurn()));
     SystemOne::decide(aboutTicket('second')->ask(fakeChurn()));
 
-    $fake->assertDecided(fn (Decision $decision): bool => $decision->context->text === 'second');
+    $fake->assertDecided(fn (Decision $decision): bool => $decision->context->state === 'second');
 
-    expect(failureOf(fn () => $fake->assertDecided(fn (Decision $decision): bool => $decision->context->text === 'third')))
+    expect(failureOf(fn () => $fake->assertDecided(fn (Decision $decision): bool => $decision->context->state === 'third')))
         ->toStartWith('No decision matching the callback was made (2 decisions were made).');
 });
 

@@ -536,6 +536,51 @@ How the typing works:
   by default, because it may contain PII.
 - Optional result caching through Laravel's cache, keyed on the decision, the
   model and the checkpoint revision.
+- **Built in #12.** The core client has two framework-free seams,
+  `Client\DecisionObserver` and `Client\ResponseCache`; the Laravel layer
+  implements them (`Laravel\DispatchesDecisionEvents`,
+  `Laravel\StoreResponseCache`), and `SystemOneManager` wires them per
+  connection from `system-one.events` and `system-one.cache`.
+  - `Laravel\Events\DecisionMade` carries the connection, the connection's
+    `model`, the question keys, the `Result`, its `Meta`, the latency and
+    `cached`; `DecisionFailed` the connection, model, question keys and the
+    `SystemOneException` (for decisions refused before sending too). Neither
+    holds the API key, and the context (text or fields) only with
+    `events.include_context` (`SYSTEM_ONE_EVENTS_INCLUDE_CONTEXT`). Events are
+    on by default (`SYSTEM_ONE_EVENTS`). An exception's trace can still hold
+    the context as an argument where `zend.exception_ignore_args` is off (it is
+    on in php.ini-production); that is PHP's, not the event's.
+  - Caching is off by default (`SYSTEM_ONE_CACHE`), uses `cache.store`
+    (`SYSTEM_ONE_CACHE_STORE`, empty for the default store) and `cache.ttl`
+    (`SYSTEM_ONE_CACHE_TTL`, seconds, an hour when empty). With it on, every
+    decision first reads `GET /health`, and the key is a SHA-256 of the
+    checkpoint revisions it reports and the whole encoded request body (context,
+    every question as sent, so a choice's options and descriptions too, the
+    request controls and the `model`), scoped to the connection name. A loaded
+    checkpoint with no revision (a local path) skips the cache, and an answer
+    is stored only when the checkpoint it reports (`routing.model`) is one the
+    key holds a revision for, so a checkpoint loaded lazily by that very call,
+    or a host that reports no routing, is never cached. A checkpoint swapped
+    between the /health read and the decision (a restart in between) can
+    still be stored under the old revision; the TTL bounds that. Entries are
+    `{status, body}` arrays, so stores that refuse to unserialize objects work;
+    a hit is decoded again, with no latency. A store that throws, a /health
+    that is refused or unreadable, and an entry that does not decode are
+    reported through the exception handler and skipped; an unreachable server
+    fails the decision as sending it would.
+  - Trade-offs kept on purpose: the /health read costs one cheap GET per
+    cached decision, hits included, so a revision change is never missed (a
+    memo of the revisions would serve stale answers for its lifetime); a
+    /health that keeps failing is reported on every decision, as a store that
+    keeps failing is, so the operator sees that caching does nothing. A
+    listener that throws propagates, as Laravel's synchronous listeners do;
+    queue the listener to isolate it. #9 should decide how hosts without
+    /health (Jev) cache, if at all.
+  - Each connection may set `model` (`SYSTEM_ONE_MODEL`); on the integration
+    branch this is #9's key: sent when a decision pins none, a pin
+    (`withModel()`, #6) wins, and it is held to the profile.
+  - The miss tests cover each part of the key the codec can send today. #4
+    must add one for a choice's options and for their descriptions.
 - Artisan commands:
   - `system-one:install` publishes the config and Compose files.
   - `system-one:health` checks the server's health and which checkpoints are
@@ -696,3 +741,47 @@ New questions get added here as they come up.
    `abstained` from `abstention === 'abstained'` (falling back to
    `low_confidence` when `abstention` is missing), and decide whether
    `unevaluated` needs its own representation or reads as "not abstained".
+
+   **Settled in #7.** Every answer (the `Answer` interface) has `abstained`,
+   `abstention` and `abstentionThreshold`. `abstained` is true only for
+   `Result\Abstention::Abstained`. `abstention` is that enum: `Passed`,
+   `Abstained`, `Unevaluated` (gate ran, no usable confidence) or
+   `NotRequested` (no `min_confidence`, so no gate ran). `abstention` decides,
+   and `low_confidence: true` without it reads as `Abstained`. The codec reads
+   all three fields in one helper (`decodeAbstention`), which each new answer
+   type's decoder spreads into its constructor.
+
+   An answer with neither `abstention` nor `low_confidence: true` reads as
+   `NotRequested` only when the decision set no `min_confidence`. When it did,
+   the answer reads as `Unevaluated`: a gate was asked for and the server gave
+   no verdict. It does not read as `Passed`, because a missing (or `false`)
+   `low_confidence` is not a pass. Laya also leaves the flag off answers it
+   could not evaluate, and its gate docs call reporting those as a pass "the
+   same lie as reporting it as a flag". Laya 0.4.8 always sends `abstention`
+   when `min_confidence` is set (live and in the fixtures), so this only
+   applies to a host that does not, such as Jev, whose spec is still unknown.
+
+2. **How strictly is response metadata read?** `usage` and `routing` are
+   informational, and hosts differ (Jev, and laya-serve under
+   `LAYA_JEV_STRICT=1`, send no `routing`), so a strict check could cost a
+   caller valid answers over a field it may never read.
+
+   **Settled in #7: strict, like the answers.** Each meta field is optional,
+   and keys the codec doesn't read are ignored, which already covers the
+   known differences between hosts. A field that is present but has the wrong
+   shape (`"routing": "english"`, a string token count) raises
+   `MalformedResponse` with the raw body. It is not mapped to null. `Meta`'s
+   null means "the host did not report this", and turning a broken report
+   into a null would make usage totals undercount without any sign. A root
+   field changing shape also means the protocol has drifted, so the answers
+   in the same body can't be trusted either. laya-serve 0.4.8 always sends
+   whole-number token counts (`int(...)` sums in `agent.py` and `serve.py`)
+   and a `routing` object (`dict(decision)` in `router.py`), so no recorded
+   host trips the check. A per-profile split (strict for Laya, tolerant for
+   others) was rejected because it means two behaviours to keep and test, for
+   a host whose spec isn't known yet.
+
+   One exception: a token count written as a whole number with a fraction or
+   exponent (`12.0`, `1e2`) is the same JSON number as `12` or `100`, so it
+   reads as that int. Fractional, negative, infinite and out-of-range values
+   are still refused.
