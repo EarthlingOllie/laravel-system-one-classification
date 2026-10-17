@@ -284,7 +284,7 @@ $result->get($department)->isConfident(0.8);                 // shorthand for an
 $result->get($department)->probabilityOf(Department::Other); // float
 $result->get($department)->distribution;                     // Distribution<Department>, ordered
 $result->get($urgency)->value;                               // Urgency::High
-$result->get($urgency)->expected;                            // 1.7 (expected level, on the backing values)
+$result->get($urgency)->expected;                            // 1.7 (the mean backing value under the distribution)
 $result->get($churn)->probability;                           // 0.91
 $result->get($churn)->isYes(threshold: 0.8);                 // bool
 $result->get($churn)->verdict(yes: 0.8, no: 0.2);            // Verdict::Yes | No | Unsure
@@ -342,13 +342,15 @@ How the typing works:
 - **Score answers** (#5): `ScoreAnswer<TEnum>` has `value` (the most probable level; the
   lowest of equally likely ones, as the server's argmax), `expected`, and
   `answerConfidence`, `confidence`, `distribution` (in level order), `probabilityOf()` and
-  `isConfident()` as on choice answers. `expected` is on the backing values: the server's
-  `score` is an expected level *index*, and the codec maps index i to level i's value and a
-  fraction between two indexes the same fraction between their values (for levels backed
-  by 0..n-1, the server's number unchanged). `ScoreAnswer` refuses an `expected` outside the
-  lowest and highest value (`InvalidDistribution`). The answer's `legend` must give back
-  every description under the index it was sent with (key order aside); any other legend, a
-  `score` outside 0..n-1, or a missing or extra probability is a `MalformedResponse`.
+  `isConfident()` as on choice answers. `ScoreAnswer` computes `expected` itself, as the
+  mean backing value under its (normalised) distribution, so it is always consistent with
+  it and between the lowest and highest value; the server's `score` is the expected level
+  *index* (the same number only for levels backed by 0..n-1), so the codec checks it but
+  does not read it. A distribution over a string-backed enum, or with no probability above
+  0, is an `InvalidDistribution`. The answer's `legend` must give back every description
+  (`ScoreQuestion::criteria()`) under the index it was sent with (key order aside); any
+  other legend, a `score` outside 0..n-1, all-zero probabilities, or a missing or extra
+  probability is a `MalformedResponse` (probability errors name the level behind the index).
 - **Typed errors.** Every exception the package throws implements the
   `Exceptions\SystemOneException` marker (enforced by the architecture tests,
   including a scan of every `throw` in `src/`).
