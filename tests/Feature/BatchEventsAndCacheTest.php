@@ -206,6 +206,16 @@ it('stores the answers of every request of a batch that spans several, each unde
     Http::assertSentCount(1 + 2 + 1);
 });
 
+it('puts a cached answer and a fresh one back in the order of the contexts', function (): void {
+    config(['system-one.cache' => ['enabled' => true, 'store' => 'array', 'ttl' => 60]]);
+    fakeBatchServer();
+    $known = SystemOne::decide(manyChurn()->withContext(Context::text('known')));
+
+    $batch = SystemOne::decideMany([Context::text('known'), Context::text('new'), Context::text('known')], manyChurn());
+
+    expect([churnIn($batch[0]), churnIn($batch[1]), churnIn($batch[2])])->toBe([churnIn($known), 0.02, churnIn($known)]);
+});
+
 it('reports no tokens for a batch answered from the cache alone', function (): void {
     config(['system-one.cache' => ['enabled' => true, 'store' => 'array', 'ttl' => 60]]);
     fakeBatchServer();
