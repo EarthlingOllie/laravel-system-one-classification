@@ -400,6 +400,10 @@ it('reads a checkpoint without a revision as null, and no loaded checkpoint as n
         ->and((new SystemOneCodec)->decodeRevisions(new Response(200, '{"revisions":{}}')))->toBe([]);
 });
 
+it('reads a revisions object whose checkpoint names are whole numbers from zero, which PHP would make a list', function (): void {
+    expect((new SystemOneCodec)->decodeRevisions(new Response(200, '{"revisions":{"0":"a","1":"b"}}')))->toBe([0 => 'a', 1 => 'b']);
+});
+
 it('raises the decision errors for a health response with an error status', function (int $status, string $exception): void {
     expect(fn () => (new SystemOneCodec)->decodeRevisions(new Response($status, '{"detail":"nope"}')))
         ->toThrow($exception, 'nope');

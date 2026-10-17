@@ -18,6 +18,7 @@ use EarthlingOllie\SystemOneClassification\Result\Answer\YesNoAnswer;
 use EarthlingOllie\SystemOneClassification\Result\Meta;
 use EarthlingOllie\SystemOneClassification\Result\Result;
 use EarthlingOllie\SystemOneClassification\Transport\Response;
+use stdClass;
 
 use function array_filter;
 use function array_is_list;
@@ -111,16 +112,24 @@ final readonly class SystemOneCodec
      */
     public function decodeRevisions(Response $response): array
     {
-        $revisions = self::object($response, 'health response')['revisions'] ?? null;
+        self::failOnStatus($response);
 
-        // `{}` decodes to [], which array_is_list() also accepts.
-        if (! is_array($revisions) || ($revisions !== [] && array_is_list($revisions))) {
+        // Decoded to objects, not arrays: `{"0": "abc"}` must stay an object, not become a list.
+        $root = json_decode($response->body);
+
+        if (! $root instanceof stdClass) {
+            throw MalformedResponse::because('The health response is not a JSON object.', $response->body);
+        }
+
+        $revisions = $root->revisions ?? null;
+
+        if (! $revisions instanceof stdClass) {
             throw MalformedResponse::because("The health response has no 'revisions' object.", $response->body);
         }
 
         $decoded = [];
 
-        foreach ($revisions as $checkpoint => $revision) {
+        foreach ((array) $revisions as $checkpoint => $revision) {
             if ($revision !== null && ! is_string($revision)) {
                 throw MalformedResponse::because("The health response's revision for '{$checkpoint}' is not a string.", $response->body);
             }
@@ -145,6 +154,25 @@ final readonly class SystemOneCodec
      */
     private static function object(Response $response, string $name): array
     {
+        self::failOnStatus($response);
+        $body = json_decode($response->body, true);
+
+        if (! is_array($body) || array_is_list($body)) {
+            throw MalformedResponse::because("The {$name} is not a JSON object.", $response->body);
+        }
+
+        return $body;
+    }
+
+    /**
+     * Raises the typed exception for any status but a 2xx.
+     *
+     * @throws HostUnavailable
+     * @throws RejectedByModel
+     * @throws MalformedResponse
+     */
+    private static function failOnStatus(Response $response): void
+    {
         $body = json_decode($response->body, true);
         $status = $response->status;
 
@@ -159,12 +187,6 @@ final readonly class SystemOneCodec
         if ($status < 200 || $status >= 300) {
             throw MalformedResponse::because("Unexpected HTTP status {$status}.", $response->body);
         }
-
-        if (! is_array($body) || array_is_list($body)) {
-            throw MalformedResponse::because("The {$name} is not a JSON object.", $response->body);
-        }
-
-        return $body;
     }
 
     /**
