@@ -63,16 +63,17 @@ it('sends no minimum confidence without a usable ?min_confidence=', function (st
     Http::assertSent(fn (Request $request): bool => ! array_key_exists('min_confidence', $request->data()));
 })->with(['absent' => '', 'empty' => 'min_confidence=', 'not a number' => 'min_confidence=high', 'array' => 'min_confidence[]=1']);
 
-it('renders an out-of-range ?min_confidence= as the package error', function (): void {
+it('renders an out-of-range ?min_confidence= as the package error with a 422 status', function (string $value): void {
     Http::fake();
 
-    $this->get('/decide?min_confidence=1.5')
-        ->assertStatus(500)
+    // The query string is the caller's input, so the page answers 422, not a 500 of its own.
+    $this->get("/decide?min_confidence={$value}")
+        ->assertStatus(422)
         ->assertSee('data-error="InvalidDecision"', escape: false)
-        ->assertSee('The minimum confidence must be between 0 and 1, got 1.5.');
+        ->assertSee("The minimum confidence must be between 0 and 1, got {$value}.");
 
     Http::assertNothingSent();
-});
+})->with(['above' => '1.5', 'a percent' => '80', 'below' => '-0.1']);
 
 it('renders Unsure and No verdicts', function (float $noul, string $verdict, string $isYes): void {
     Http::fake(['*' => Http::response(['answers' => ['churn' => ['type' => 'noul', 'noul' => $noul]]])]);

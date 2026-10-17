@@ -6,6 +6,7 @@ use EarthlingOllie\SystemOneClassification\Domain\Context;
 use EarthlingOllie\SystemOneClassification\Domain\Decision;
 use EarthlingOllie\SystemOneClassification\Domain\Question;
 use EarthlingOllie\SystemOneClassification\Exceptions\HostUnavailable;
+use EarthlingOllie\SystemOneClassification\Exceptions\InvalidDecision;
 use EarthlingOllie\SystemOneClassification\Exceptions\MalformedResponse;
 use EarthlingOllie\SystemOneClassification\Exceptions\RejectedByModel;
 use EarthlingOllie\SystemOneClassification\Exceptions\SystemOneException;
@@ -49,7 +50,8 @@ Route::get('/', function (Application $app): string {
  * metadata (model, checkpoint, routing reason, tokens, latency). A package exception is
  * rendered as an error page: 503 when the server is unreachable or down (HostUnavailable),
  * 502 when it refused the decision or answered nonsense (RejectedByModel,
- * MalformedResponse), 500 for this app's own mistakes (InvalidConfiguration and the rest).
+ * MalformedResponse), 422 when the query string makes the decision invalid (InvalidDecision),
+ * 500 for this app's own mistakes (InvalidConfiguration and the rest).
  * Messages are shown as the package wrote them; HostUnavailable's are already redacted.
  *
  * Under `composer serve` the shell environment does not reach this app (Testbench turns
@@ -113,7 +115,9 @@ Route::get('/decide', function (Request $request): Response {
         $status = match (true) {
             $exception instanceof HostUnavailable => 503,
             $exception instanceof RejectedByModel, $exception instanceof MalformedResponse => 502,
-            default => 500, // this app's own mistake: InvalidConfiguration, InvalidDecision, ...
+            // The page builds a valid decision unless the query string breaks it (?min_confidence=80).
+            $exception instanceof InvalidDecision => 422,
+            default => 500, // this app's own mistake: InvalidConfiguration and the rest
         };
         $type = e(class_basename($exception));
         $message = e($exception->getMessage());
