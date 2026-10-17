@@ -65,7 +65,7 @@ it('takes the expected level by backing value, whatever order the distribution l
     expect($answer->expected)->toBe(5.25);
 });
 
-it('keeps the expected level between the lowest and highest level, rounding included', function (): void {
+it('normalises probabilities that do not add up to 1 in floating point', function (): void {
     // Probabilities that do not add up to 1 in floating point, nearly all on the top level.
     $answer = majorAnswer(distribution: severityDistribution(0.1, 0.2, 0.7000000000000001));
 

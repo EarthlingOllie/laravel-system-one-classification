@@ -297,10 +297,11 @@ final readonly class SystemOneCodec
         }
 
         $distribution = self::distribution($key, $answer, $labelled, "levels of {$question->enum}", $body);
-        $value = $levels[0]['case'];
+        $value = null;
         $highest = 0.0;
 
-        // The first of equally likely levels wins, as with the server's argmax.
+        // The first of equally likely levels wins, as with the server's argmax. A level with
+        // probability 0 is never the most likely one, so all zeros leave no value.
         foreach ($distribution->entries() as ['case' => $case, 'probability' => $probability]) {
             if ($probability > $highest) {
                 $value = $case;
@@ -308,7 +309,7 @@ final readonly class SystemOneCodec
             }
         }
 
-        if ($highest === 0.0) {
+        if ($value === null) {
             throw MalformedResponse::because("The answer for '{$key}' gives no level a probability above 0.", $body);
         }
 

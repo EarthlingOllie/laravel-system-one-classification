@@ -11,9 +11,7 @@ use EarthlingOllie\SystemOneClassification\Result\Confidence;
 use EarthlingOllie\SystemOneClassification\Result\Distribution;
 use EarthlingOllie\SystemOneClassification\Result\Probability;
 
-use function array_reverse;
 use function is_int;
-use function krsort;
 
 /**
  * The answer to a score question: the most likely level, typed as the question's enum, and
@@ -71,51 +69,29 @@ final readonly class ScoreAnswer implements Answer
     }
 
     /**
-     * The mean backing value, written as the lowest value plus, for each step up to a higher
-     * level, the probability of reaching it times the step's width:
-     * E = v0 + P(>= v1)(v1 - v0) + P(>= v2)(v2 - v1) + ...
-     *
-     * The "at least" sums are added from the top down, so none exceeds the total they are
-     * divided by, and each step adds between nothing and its full width: the result stays
-     * within the lowest and highest value even with floating-point rounding.
+     * The mean backing value, each weighted by its probability: sum(p * v) / sum(p). Dividing
+     * by the total normalises probabilities the server rounded, which need not add up to 1.
      *
      * @param  Distribution<TEnum>  $distribution
      */
     private static function expected(string $enum, Distribution $distribution): float
     {
-        $probabilities = [];
+        $weighted = 0.0;
+        $total = 0.0;
 
         foreach ($distribution->entries() as ['case' => $case, 'probability' => $probability]) {
             if (! is_int($case->value)) {
                 throw InvalidDistribution::notIntBacked($case::class);
             }
 
-            $probabilities[$case->value] = $probability;
-        }
-
-        krsort($probabilities);
-        $atLeast = [];
-        $total = 0.0;
-
-        foreach ($probabilities as $level => $probability) {
+            $weighted += $probability * $case->value;
             $total += $probability;
-            $atLeast[$level] = $total;
         }
 
         if ($total <= 0.0) {
             throw InvalidDistribution::noProbability($enum);
         }
 
-        // From the lowest level up; below it, the "previous value" is 0, and the lowest
-        // level's own step is all the probability (total / total = 1) times its value.
-        $expected = 0.0;
-        $previous = 0;
-
-        foreach (array_reverse($atLeast, true) as $level => $mass) {
-            $expected += $mass / $total * ($level - $previous);
-            $previous = $level;
-        }
-
-        return $expected;
+        return $weighted / $total;
     }
 }
