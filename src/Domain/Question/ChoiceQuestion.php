@@ -12,6 +12,7 @@ use EarthlingOllie\SystemOneClassification\Result\Answer\ChoiceAnswer;
 use Error;
 use ReflectionClassConstant;
 
+use function enum_exists;
 use function is_subclass_of;
 use function trim;
 
@@ -46,7 +47,9 @@ final readonly class ChoiceQuestion implements QuestionHandle
         $this->key = QuestionKey::validate($key);
         Instructions::validate($key, $instructions);
 
-        if (! is_subclass_of($enum, BackedEnum::class)) {
+        // enum_exists() too: an interface that extends BackedEnum is a subclass of it, but has
+        // no cases() to call.
+        if (! enum_exists($enum) || ! is_subclass_of($enum, BackedEnum::class)) {
             throw InvalidDecision::notBackedEnum($key, $enum);
         }
 

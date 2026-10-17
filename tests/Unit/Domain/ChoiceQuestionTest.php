@@ -7,6 +7,7 @@ use EarthlingOllie\SystemOneClassification\Domain\Question;
 use EarthlingOllie\SystemOneClassification\Domain\Question\ChoiceQuestion;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidDecision;
 use EarthlingOllie\SystemOneClassification\Result\Answer\ChoiceAnswer;
+use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\BackedEnumInterface;
 use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\BlankDescription;
 use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\BlankTranslation;
 use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\Channel;
@@ -67,6 +68,8 @@ it('rejects a class that is not a backed enum', function (string $class): void {
 })->with([
     'a pure enum' => [Unbacked::class],
     'a class' => [stdClass::class],
+    'the BackedEnum interface' => [BackedEnum::class],
+    'an interface extending BackedEnum' => [BackedEnumInterface::class],
     'no class at all' => ['NoSuchEnum'],
 ])->throws(InvalidDecision::class, 'is not a backed enum');
 
