@@ -97,7 +97,7 @@ php artisan system-one:install --mode=sail
 ```
 
 1. It publishes `config/system-one.php`.
-2. It adds a `laya` service, on the `sail` network, and a `sail-laya` volume for the weights to your Sail Compose file (`compose.yaml`, or whichever of `compose.yml`, `docker-compose.yaml` and `docker-compose.yml` you have). The new lines are appended, and the existing ones are left untouched.
+2. It adds a `laya` service (on the `sail` network, when the file has one) and a `sail-laya` volume for the weights to your Sail Compose file (`compose.yaml`, or whichever of `compose.yml`, `docker-compose.yaml` and `docker-compose.yml` you have). The new lines are appended, and the existing ones are left untouched.
 3. It sets `SYSTEM_ONE_URL=http://laya:8000` in `.env`, so the `laravel.test` container reaches it by its service name.
 
 ```bash
@@ -305,7 +305,7 @@ Reading a question the decision did not ask throws `UnknownQuestion`. Questions 
 Every choice and score answer has two confidence values. **Gate on `answerConfidence`**, not on the raw `confidence`.
 
 - **`answerConfidence`** is the probability the model gave to the answer it reports. It means the same thing on every model, so a threshold carries over when you switch from local Laya to Jev, or from one checkpoint to another. laya-serve's own abstention gate compares this value too.
-- **`confidence`** is the model's own measure, and each model computes it differently. Laya reports 1 minus the normalised entropy of the whole distribution, so it drops whenever the probability is spread across the other options, even when the top answer is clear. In one Laya response, `billing` had an `answerConfidence` of 0.93 but a `confidence` of 0.45. Jev uses a formula of its own. That is why `confidence` is tagged with the `profile` that produced it: a threshold tuned on one profile means nothing on another. Use it for monitoring, or compare it only within one profile.
+- **`confidence`** is the model's own measure, and each model computes it differently. Laya reports 1 minus the normalised entropy of the whole distribution, so it drops whenever the probability is spread across the other options, even when the top answer is clear. In the example response laya-ai.com documents, `billing` has an `answerConfidence` of 0.93 but a `confidence` of 0.45. Jev uses a formula of its own. That is why `confidence` is tagged with the `profile` that produced it: a threshold tuned on one profile means nothing on another. Use it for monitoring, or compare it only within one profile.
 
 Yes/no answers have only `probability`, the probability of "yes". The confidence of a yes/no answer, which the server's gate uses, is the probability of the side it reports: `max(p, 1 - p)`. Rather than one cut-off at 0.5, use `verdict()` to leave a band in the middle for a human:
 
@@ -513,7 +513,7 @@ SystemOne::fake([FakeAnswer::yesNo($churn, 0.91)])->strict();
 
 - It refuses whatever the real client would refuse before sending, such as a profile limit or a missing connection, and does not record it.
 - Named connections work: `SystemOne::connection('jev')->decide()` is answered by the fake and recorded with the name `jev`. A remote connection needs no API key under the fake, because nothing is sent.
-- `decideMany()` records each context as one decision. Its `ResultSet` has no `usage`, and no result has `meta`.
+- `decideMany()` records each context as one decision. Its `ResultSet` has no `usage`, and every result's `meta` is empty (all null).
 
 **Inject `ConnectionResolver`**, not `SystemOneManager`, in your app code. The container resolves the interface to the fake once `SystemOne::fake()` has swapped it in. `SystemOneManager` is final and always stays the real manager:
 
@@ -632,7 +632,7 @@ Settings are read from the environment, and Compose also reads them from the `.e
 | `LAYA_DEFAULT_MODEL` | `english` | Where text with no language evidence goes. |
 | `LAYA_HOST_PORT` | `8000` | The port on 127.0.0.1. Change `SYSTEM_ONE_URL` to match. |
 | `LAYA_API_KEY` | none | Makes the server require a bearer key. Set `SYSTEM_ONE_API_KEY` to the same value. |
-| `LAYA_THREADS` | all | Caps the CPU threads torch uses. |
+| `LAYA_THREADS` | torch's default | Caps the CPU threads torch uses. Keep it at or below your physical cores. |
 | `LAYA_TOURNAMENT_GROUP` | none | Raises the choice option limit to 255. Set `SYSTEM_ONE_TOURNAMENT_GROUPING=true` to match. |
 | `LAYA_EXTRA_MODELS` | none | JSON `{name: hub id or path}` of checkpoints of your own. List the names in `SYSTEM_ONE_MODELS`. |
 
