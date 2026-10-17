@@ -101,7 +101,7 @@ final class SystemOneFake implements ConnectionResolver, Fake
         $answers = [];
 
         foreach ($decision->questions() as $question) {
-            $answers[$question->key] = ['question' => $question, 'answer' => $this->script($question)->answerFor($connection->profile->name)];
+            $answers[$question->key] = ['question' => $question, 'answer' => $this->script($question)->answerFor($connection->profile->name, $decision->minConfidence)];
         }
 
         $result = new Result($answers);

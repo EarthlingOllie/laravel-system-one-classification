@@ -14,6 +14,7 @@ use EarthlingOllie\SystemOneClassification\Exceptions\InvalidDecision;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidDistribution;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidFakeAnswer;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidProbability;
+use EarthlingOllie\SystemOneClassification\Result\Abstention;
 use EarthlingOllie\SystemOneClassification\Result\Answer\Answer;
 use EarthlingOllie\SystemOneClassification\Result\Answer\ChoiceAnswer;
 use EarthlingOllie\SystemOneClassification\Result\Answer\ScoreAnswer;
@@ -34,11 +35,16 @@ use function max;
  * A scripted answer for SystemOne::fake(): the question it answers and how to answer it.
  *
  * Build one with the typed helpers: `FakeAnswer::choice($department, Department::Billing)`,
- * `FakeAnswer::score($urgency, Urgency::High, expected: 1.7)`, `FakeAnswer::yesNo($churn, 0.91)`.
+ * `FakeAnswer::score($urgency, Urgency::High, expected: 1.7)`, `FakeAnswer::yesNo($churn, 0.91)`,
+ * and `FakeAnswer::abstained(...)` around any of them.
  * The answers are the same immutable types the real client returns, with a distribution a
  * model could have given: the scripted case is always the most likely one. Their raw
  * `confidence` is Laya's (1 - normalised entropy of the distribution), tagged with the profile
  * of the connection the fake answers on.
+ *
+ * Their abstention is what a server reports for the decision they answer: none (NotRequested)
+ * unless it sets a minimum confidence, and then Passed, or Abstained for an abstained() script,
+ * at that threshold.
  *
  * @template-covariant TAnswer of Answer
  */
@@ -46,12 +52,31 @@ final readonly class FakeAnswer
 {
     /**
      * @param  QuestionHandle<TAnswer>  $question
-     * @param  Closure(string): TAnswer  $answer  builds the answer for a connection's profile
+     * @param  Closure(string, Abstention, ?float): TAnswer  $answer  builds the answer for a
+     *                                                                connection's profile and
+     *                                                                the decision's gate
+     * @param  bool  $abstains  whether the answer abstains when the decision is gated
      */
     private function __construct(
         public QuestionHandle $question,
         private Closure $answer,
+        private bool $abstains = false,
     ) {}
+
+    /**
+     * The scripted answer, abstained: it keeps its value (the model's best guess) and reads as
+     * Abstained at the decision's minimum confidence. A decision that sets none is refused, as
+     * no server would abstain on it.
+     *
+     * @template TAbstained of Answer
+     *
+     * @param  self<TAbstained>  $answer
+     * @return self<TAbstained>
+     */
+    public static function abstained(self $answer): self
+    {
+        return new self($answer->question, $answer->answer, abstains: true);
+    }
 
     /**
      * A yes/no answer with the given probability that the statement is true.
@@ -62,9 +87,9 @@ final readonly class FakeAnswer
      */
     public static function yesNo(YesNoQuestion $question, float $probability): self
     {
-        $answer = new YesNoAnswer($probability);
+        Probability::check('A probability', $probability);
 
-        return new self($question, static fn (): YesNoAnswer => $answer);
+        return new self($question, static fn (string $profile, Abstention $abstention, ?float $threshold): YesNoAnswer => new YesNoAnswer($probability, $abstention, $threshold));
     }
 
     /**
@@ -99,11 +124,13 @@ final readonly class FakeAnswer
             $question->options(),
         ));
 
-        return new self($question, static fn (string $profile): ChoiceAnswer => new ChoiceAnswer(
+        return new self($question, static fn (string $profile, Abstention $abstention, ?float $threshold): ChoiceAnswer => new ChoiceAnswer(
             $case,
             $confidence,
             new Confidence(self::rawConfidence($distribution), $profile),
             $distribution,
+            $abstention,
+            $threshold,
         ));
     }
 
@@ -159,11 +186,13 @@ final readonly class FakeAnswer
         ));
         $answerConfidence = $distribution->probabilityOf($case);
 
-        return new self($question, static fn (string $profile): ScoreAnswer => new ScoreAnswer(
+        return new self($question, static fn (string $profile, Abstention $abstention, ?float $threshold): ScoreAnswer => new ScoreAnswer(
             $case,
             $answerConfidence,
             new Confidence(self::rawConfidence($distribution), $profile),
             $distribution,
+            $abstention,
+            $threshold,
         ));
     }
 
@@ -189,13 +218,22 @@ final readonly class FakeAnswer
     }
 
     /**
-     * The answer, its raw confidence tagged with the given model profile.
+     * The answer, its raw confidence tagged with the given model profile, gated as a server
+     * gates it at the decision's minimum confidence.
      *
      * @return TAnswer
+     *
+     * @throws InvalidFakeAnswer when the answer abstains but the decision sets no minimum confidence
      */
-    public function answerFor(string $profile): Answer
+    public function answerFor(string $profile, ?float $minConfidence = null): Answer
     {
-        return ($this->answer)($profile);
+        if ($minConfidence === null) {
+            return $this->abstains
+                ? throw InvalidFakeAnswer::abstainedWithoutGate($this->question->key)
+                : ($this->answer)($profile, Abstention::NotRequested, null);
+        }
+
+        return ($this->answer)($profile, $this->abstains ? Abstention::Abstained : Abstention::Passed, $minConfidence);
     }
 
     /**

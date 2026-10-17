@@ -24,4 +24,9 @@ final class InvalidFakeAnswer extends InvalidArgumentException implements System
 
         return new self("The scripted answer to '{$key}' cannot have an expected level of {$expected} with {$case->name} as its most likely level: that level allows {$from}, up to {$highest}.");
     }
+
+    public static function abstainedWithoutGate(string $key): self
+    {
+        return new self("The answer for '{$key}' is scripted as abstained, but the decision sets no minimum confidence (withMinConfidence()), so no server would abstain on it.");
+    }
 }

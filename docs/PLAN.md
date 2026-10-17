@@ -526,8 +526,12 @@ How the typing works:
       collected into a `ResultSet` (its `usage` null), after encoding with
       `encodeBatches()`. Each context is then one recorded decision, so the assertions
       cover batches unchanged.
-    - #7 abstention: `FakeAnswer::abstained($q, …)`, the issue's "abstained answer",
-      needs answers to carry `Abstention`, which only #7 adds. Until then it is not built.
+    - #7 abstention (done on the integration branch): `FakeAnswer::abstained($script)`
+      keeps the script's value and reads as `Abstained` at the decision's
+      `min_confidence`; every other answer on a gated decision reads as `Passed` at it,
+      and as `NotRequested` on an ungated one. An abstained script asked for by a
+      decision with no `min_confidence` is an `InvalidFakeAnswer`: no server would
+      abstain on it.
     - #6 `ModelProfile` (done on the integration branch): `FakeConnection::$profile` is
       the connection's `ModelProfile`; answers are tagged with its `name`.
     - #9 named connections (done on the integration branch): the fake checks connections

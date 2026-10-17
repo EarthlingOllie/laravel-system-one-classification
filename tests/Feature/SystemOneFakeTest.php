@@ -11,12 +11,14 @@ use EarthlingOllie\SystemOneClassification\Domain\Question\ScoreQuestion;
 use EarthlingOllie\SystemOneClassification\Domain\Question\YesNoQuestion;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidConfiguration;
 use EarthlingOllie\SystemOneClassification\Exceptions\InvalidDecision;
+use EarthlingOllie\SystemOneClassification\Exceptions\InvalidFakeAnswer;
 use EarthlingOllie\SystemOneClassification\Exceptions\UnscriptedQuestion;
 use EarthlingOllie\SystemOneClassification\Laravel\ConnectionResolver;
 use EarthlingOllie\SystemOneClassification\Laravel\Facades\SystemOne;
 use EarthlingOllie\SystemOneClassification\Laravel\SystemOneManager;
 use EarthlingOllie\SystemOneClassification\Laravel\Testing\FakeAnswer;
 use EarthlingOllie\SystemOneClassification\Laravel\Testing\SystemOneFake;
+use EarthlingOllie\SystemOneClassification\Result\Abstention;
 use EarthlingOllie\SystemOneClassification\Result\Answer\ChoiceAnswer;
 use EarthlingOllie\SystemOneClassification\Result\Answer\ScoreAnswer;
 use EarthlingOllie\SystemOneClassification\Result\Answer\YesNoAnswer;
@@ -338,4 +340,63 @@ it('runs the assertions through the facade', function (): void {
     SystemOne::assertDecidedTimes(1);
     SystemOne::assertAsked(fakeChurn());
     SystemOne::assertDecided(fn (Decision $decision): bool => true);
+});
+
+// #7's abstention, which the issue's "abstained answer" helper needs.
+it('answers an abstained script as abstained at the decision\'s minimum confidence, keeping the best guess', function (): void {
+    $department = fakeDepartmentQuestion();
+    $urgency = fakeUrgencyQuestion();
+    $churn = fakeChurn();
+    SystemOne::fake([
+        FakeAnswer::abstained(FakeAnswer::choice($department, Department::Technical, confidence: 0.4)),
+        FakeAnswer::abstained(FakeAnswer::score($urgency, Urgency::High)),
+        FakeAnswer::abstained(FakeAnswer::yesNo($churn, 0.55)),
+    ]);
+
+    $result = SystemOne::decide(aboutTicket()->ask($department, $urgency, $churn)->withMinConfidence(0.8));
+
+    foreach ([$department, $urgency, $churn] as $question) {
+        expect($result->get($question)->abstained)->toBeTrue()
+            ->and($result->get($question)->abstention)->toBe(Abstention::Abstained)
+            ->and($result->get($question)->abstentionThreshold)->toBe(0.8);
+    }
+
+    expect($result->get($department)->value)->toBe(Department::Technical)
+        ->and($result->get($department)->answerConfidence)->toBe(0.4)
+        ->and($result->get($urgency)->value)->toBe(Urgency::High)
+        ->and($result->get($churn)->probability)->toBe(0.55);
+});
+
+it('answers every other question on a gated decision as passed, as a server reports it', function (): void {
+    $churn = fakeChurn();
+    $urgency = fakeUrgencyQuestion();
+    SystemOne::fake([FakeAnswer::yesNo($churn, 0.9)]);
+
+    $result = SystemOne::decide(aboutTicket()->ask($churn, $urgency)->withMinConfidence(0.6));
+
+    foreach ([$churn, $urgency] as $question) {
+        expect($result->get($question)->abstained)->toBeFalse()
+            ->and($result->get($question)->abstention)->toBe(Abstention::Passed)
+            ->and($result->get($question)->abstentionThreshold)->toBe(0.6);
+    }
+});
+
+it('answers a decision without a minimum confidence as not gated, an unused abstained script included', function (): void {
+    $churn = fakeChurn();
+    $urgency = fakeUrgencyQuestion();
+    SystemOne::fake([FakeAnswer::yesNo($churn, 0.9), FakeAnswer::abstained(FakeAnswer::score($urgency, Urgency::Low))]);
+
+    $answer = SystemOne::decide(aboutTicket()->ask($churn))->get($churn);
+
+    expect($answer->abstention)->toBe(Abstention::NotRequested)
+        ->and($answer->abstentionThreshold)->toBeNull();
+});
+
+it('refuses an abstained script for a decision that set no minimum confidence, which no server would abstain on', function (): void {
+    $churn = fakeChurn();
+    $fake = SystemOne::fake([FakeAnswer::abstained(FakeAnswer::yesNo($churn, 0.5))]);
+
+    expect(fn (): mixed => SystemOne::decide(aboutTicket()->ask($churn)))
+        ->toThrow(InvalidFakeAnswer::class, "The answer for 'churn' is scripted as abstained, but the decision sets no minimum confidence (withMinConfidence()), so no server would abstain on it.");
+    $fake->assertNothingDecided();
 });

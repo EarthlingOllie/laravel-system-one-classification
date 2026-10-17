@@ -43,6 +43,9 @@ function fakeTypes(ConnectionResolver $systemOne): void
     assertType(ChoiceAnswer::class.'<'.Department::class.'>', $choice->answerFor('laya'));
     assertType(Department::class, $choice->answerFor('laya')->value);
     assertType(ScoreAnswer::class.'<'.Urgency::class.'>', $score->answerFor('laya'));
+    // abstained() keeps the script's answer type, enum included.
+    assertType(FakeAnswer::class.'<'.ChoiceAnswer::class.'<'.Department::class.'>>', FakeAnswer::abstained($choice));
+    assertType(Department::class, FakeAnswer::abstained($choice)->answerFor('laya', 0.8)->value);
 
     $fake = SystemOne::fake([$yesNo, $choice, $score]);
 
