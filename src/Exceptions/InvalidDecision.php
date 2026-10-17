@@ -119,6 +119,11 @@ final class InvalidDecision extends InvalidArgumentException implements SystemOn
         return new self('A model must not be blank; leave it out to let the server choose.');
     }
 
+    public static function paddedModel(string $model, string $trimmed): self
+    {
+        return new self("Model '{$model}' has whitespace around it; pin '{$trimmed}'.");
+    }
+
     /**
      * @param  list<string>  $accepted
      */

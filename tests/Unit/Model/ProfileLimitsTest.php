@@ -92,10 +92,10 @@ it('refuses a model the profile does not accept, listing the ones it does', func
         ->toThrow(InvalidDecision::class, "The decision pins model 'someone/else', which the laya profile does not accept; use one of: ".implode(', ', LayaProfile::MODELS).'.');
 });
 
-it('refuses a model that differs from an accepted one only in case or spacing', function (string $model): void {
+it('refuses a model that differs from an accepted one only in case', function (string $model): void {
     expect(fn () => (new SystemOneCodec(new LayaProfile))->encode(scoreOver(Urgency::class)->withModel($model)))
         ->toThrow(InvalidDecision::class, "The decision pins model '{$model}'");
-})->with(['English', ' english']);
+})->with(['English', 'ENGLISH']);
 
 it('refuses every model on a profile that lists none, saying where to list them', function (): void {
     expect(fn () => (new SystemOneCodec(new JevProfile))->encode(scoreOver(Urgency::class)->withModel('jev-1')))

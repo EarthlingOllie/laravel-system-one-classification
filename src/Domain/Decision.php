@@ -39,12 +39,19 @@ final readonly class Decision
      * Which values are valid depends on the model: the connection's profile checks it before
      * sending.
      *
-     * @throws InvalidDecision when the model is blank
+     * @throws InvalidDecision when the model is blank or has whitespace around it
      */
     public function withModel(string $model): self
     {
-        if (trim($model) === '') {
+        $trimmed = trim($model);
+
+        if ($trimmed === '') {
             throw InvalidDecision::blankModel();
+        }
+
+        // Model values are exact names: ' english' is not 'english' to the server either.
+        if ($trimmed !== $model) {
+            throw InvalidDecision::paddedModel($model, $trimmed);
         }
 
         return new self($this->context, $this->questions, $model);

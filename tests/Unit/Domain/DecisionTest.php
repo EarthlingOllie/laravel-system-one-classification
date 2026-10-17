@@ -95,6 +95,17 @@ it('rejects a blank model', function (string $model): void {
     Decision::about(Context::text('We were billed twice.'))->withModel($model);
 })->throws(InvalidDecision::class, 'A model must not be blank; leave it out to let the server choose.')->with(['', ' ', "\t\n"]);
 
+// Review finding: ' english' passed the blank check and was then refused by the profile with
+// a list that contains 'english', which reads as a contradiction.
+it('rejects a model with surrounding whitespace, naming the trimmed one', function (string $model): void {
+    Decision::about(Context::text('We were billed twice.'))->withModel($model);
+})->throws(InvalidDecision::class, "Model ' english' has whitespace around it; pin 'english'.")->with([' english']);
+
+it('names the trimmed model for whitespace on either side', function (string $model): void {
+    expect(fn () => Decision::about(Context::text('We were billed twice.'))->withModel($model))
+        ->toThrow(InvalidDecision::class, "pin 'english'.");
+})->with(['english ', "\tenglish\n"]);
+
 it('cannot be changed after construction', function (): void {
     $decision = Decision::about(Context::text('We were billed twice.'));
 
