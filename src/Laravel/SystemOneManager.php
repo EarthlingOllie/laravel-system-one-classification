@@ -105,9 +105,11 @@ final readonly class SystemOneManager
         // Like the timeout, an unset or empty profile means the default: Laya.
         $profile = $connection['profile'] ?? '';
         $models = self::models($name, $connection['models'] ?? []);
+        // Checked whatever the profile, so a config does not break only when it switches to laya.
+        $tournamentGrouping = self::tournamentGrouping($name, $connection['tournament_grouping'] ?? false);
 
         return match ($profile) {
-            '', 'laya' => new LayaProfile(self::tournamentGrouping($name, $connection['tournament_grouping'] ?? false), $models),
+            '', 'laya' => new LayaProfile($tournamentGrouping, $models),
             'jev' => new JevProfile($models),
             default => throw InvalidConfiguration::unknownProfile($name, implode(', ', self::PROFILES)),
         };

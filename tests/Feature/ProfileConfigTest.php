@@ -79,11 +79,13 @@ it('keeps the 100 option limit when tournament grouping is off or unset', functi
         ->toThrow(InvalidDecision::class, 'more than the 100 the laya profile allows');
 })->with(['false' => false, "'0'" => '0', "'false'" => 'false', 'empty' => '', 'null' => null]);
 
-it('rejects a tournament_grouping that is not true or false', function (mixed $value): void {
-    config(['system-one.connections.broken' => ['url' => 'http://x', 'tournament_grouping' => $value]]);
+// Review finding: on a jev connection it was ignored, so the same config failed only once
+// the profile was switched to laya.
+it('rejects a tournament_grouping that is not true or false, whatever the profile', function (mixed $value, string $profile): void {
+    config(['system-one.connections.broken' => ['url' => 'http://x', 'profile' => $profile, 'tournament_grouping' => $value]]);
 
     SystemOne::connection('broken');
-})->with(['words' => 'sometimes', 'a number' => 2, 'a list' => [[true]]])
+})->with(['words' => 'sometimes', 'a number' => 2, 'a list' => [[true]]])->with(['laya', 'jev'])
     ->throws(InvalidConfiguration::class, "System One connection 'broken' has a 'tournament_grouping' that is not true or false.");
 
 it('holds a jev connection to 255 options per choice question', function (): void {
