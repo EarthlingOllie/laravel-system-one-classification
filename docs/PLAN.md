@@ -320,7 +320,8 @@ How the typing works:
   `Question\ChoiceQuestion<TEnum>`; an enum implementing `DescribesCases` is described
   by `describe()` instead of the attribute, and a case with neither goes out as its bare
   label (`null` criterion). Criteria always go out as a JSON object (the codec builds a
-  `stdClass`), so whole-number labels survive. A blank description, a non-backed class,
+  `stdClass`), so whole-number labels survive. A blank label or description, a non-backed class
+(an interface extending `BackedEnum` included),
   an enum without cases, or a `#[Describe]` PHP cannot build (repeated, or wrong
   arguments; PHP's `Error` is chained as the previous exception) is an `InvalidDecision`.
 - **Choice answers** (#4): `ChoiceAnswer<TEnum>` has `value`, `answerConfidence` (the

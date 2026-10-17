@@ -39,7 +39,8 @@ final readonly class ChoiceQuestion implements QuestionHandle
      * @param  class-string<TEnum>  $enum
      *
      * @throws InvalidDecision when the key or instructions are invalid, the class is not a
-     *                         backed enum, the enum has no cases, a description is blank, or
+     *                         backed enum, the enum has no cases, a label (backing value) or
+     *                         a description is blank, or
      *                         a #[Describe] cannot be built (repeated, or wrong arguments)
      */
     public function __construct(string $key, public string $enum, public string $instructions)
@@ -56,6 +57,10 @@ final readonly class ChoiceQuestion implements QuestionHandle
         $options = [];
 
         foreach ($enum::cases() as $case) {
+            if (trim((string) $case->value) === '') {
+                throw InvalidDecision::blankLabel($key, $case);
+            }
+
             $options[] = ['case' => $case, 'description' => self::describe($key, $case)];
         }
 

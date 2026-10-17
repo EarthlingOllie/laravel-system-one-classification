@@ -9,12 +9,14 @@ use EarthlingOllie\SystemOneClassification\Exceptions\InvalidDecision;
 use EarthlingOllie\SystemOneClassification\Result\Answer\ChoiceAnswer;
 use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\BackedEnumInterface;
 use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\BlankDescription;
+use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\BlankLabel;
 use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\BlankTranslation;
 use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\Channel;
 use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\Department;
 use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\DescribeNotString;
 use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\DescribeUnknownArgument;
 use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\DescribeWithoutText;
+use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\EmptyLabel;
 use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\NoCases;
 use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\Priority;
 use EarthlingOllie\SystemOneClassification\Tests\Fixtures\Enums\RepeatedDescribe;
@@ -80,6 +82,18 @@ it('names the class that is not a backed enum', function (): void {
 it('rejects an enum with no cases', function (): void {
     Question::choice('nothing', NoCases::class, 'Which one?');
 })->throws(InvalidDecision::class, "Choice question 'nothing' has no options: ".NoCases::class.' has no cases.');
+
+// The label is what the model answers with; a blank one would only fail at the server.
+it('rejects a case whose backing value is a blank option label', function (string $enum): void {
+    Question::choice('blank', $enum, 'Which one?');
+})->with([
+    'empty' => [EmptyLabel::class],
+    'whitespace' => [BlankLabel::class],
+])->throws(InvalidDecision::class, 'is a blank option label; back it with a word the model can answer with');
+
+it('names the case whose label is blank', function (): void {
+    Question::choice('blank', EmptyLabel::class, 'Which one?');
+})->throws(InvalidDecision::class, "Choice question 'blank' has a blank option label: ".EmptyLabel::class."::Empty is backed by '', which is a blank option label; back it with a word the model can answer with.");
 
 it('rejects a blank description, from the attribute or the interface', function (string $enum, string $label): void {
     Question::choice('blank', $enum, 'Which one?');

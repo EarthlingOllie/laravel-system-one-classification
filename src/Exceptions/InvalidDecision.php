@@ -47,6 +47,13 @@ final class InvalidDecision extends InvalidArgumentException implements SystemOn
         return new self("Choice question '{$key}' has no options: {$enum} has no cases.");
     }
 
+    public static function blankLabel(string $key, BackedEnum $case): self
+    {
+        $enum = $case::class;
+
+        return new self("Choice question '{$key}' has a blank option label: {$enum}::{$case->name} is backed by '{$case->value}', which is a blank option label; back it with a word the model can answer with.");
+    }
+
     public static function blankDescription(string $key, string $label): self
     {
         return new self("Option '{$label}' of choice question '{$key}' has a description that is blank; describe it or leave the description out.");
