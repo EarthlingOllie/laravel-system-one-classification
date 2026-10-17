@@ -13,6 +13,8 @@ use EarthlingOllie\SystemOneClassification\Exceptions\SystemOneException;
 use EarthlingOllie\SystemOneClassification\Laravel\Facades\SystemOne;
 use EarthlingOllie\SystemOneClassification\Laravel\SystemOneManager;
 use EarthlingOllie\SystemOneClassification\Laravel\SystemOneServiceProvider;
+use EarthlingOllie\SystemOneClassification\Model\LayaProfile;
+use EarthlingOllie\SystemOneClassification\Transport\Redactor;
 use Illuminate\Foundation\Application;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -272,18 +274,20 @@ Route::get('/score', function (Request $request) use ($ticket, $model, $connecti
  * server started with LAYA_TOURNAMENT_GROUP, it is sent. The page names the profile and the
  * tournament grouping the asked connection's config picks.
  */
-Route::get('/limits', function (Request $request) use ($ticket, $model, $connection, $decision, $failure, $page): Response {
+Route::get('/limits', function (Request $request, SystemOneManager $manager) use ($ticket, $model, $connection, $decision, $failure, $page): Response {
     $text = $ticket($request);
     $pinned = $model($request);
     $asked = $connection($request);
     $topic = Question::choice('topic', Topic::class, 'Which topic is this about?');
-    $default = config('system-one.default');
-    $settings = config('system-one.connections.'.($asked ?? (is_string($default) ? $default : '')));
-    $settings = is_array($settings) ? $settings : [];
-    // Shown as the config states them (the manager refuses anything it cannot read).
-    $profile = $settings['profile'] ?? null;
-    $profile = e(is_string($profile) && $profile !== '' ? $profile : 'laya');
-    $grouping = filter_var($settings['tournament_grouping'] ?? false, FILTER_VALIDATE_BOOL) ? 'yes' : 'no';
+    // The profile as the manager reads it from config; a config it refuses shows its error below.
+    try {
+        $checked = $manager->configuration($asked)->profile;
+        $profile = e($checked->name);
+        $grouping = $checked instanceof LayaProfile && $checked->maxChoiceOptions === LayaProfile::TOURNAMENT_MAX_CHOICE_OPTIONS ? 'yes' : 'no';
+    } catch (InvalidConfiguration) {
+        [$profile, $grouping] = ['', 'no'];
+    }
+
     $options = count($topic->options());
     $status = 200;
 
@@ -333,7 +337,8 @@ Route::get('/connections', function (SystemOneManager $manager): string {
         }
 
         $isDefault = $name === $default ? 'yes' : 'no';
-        $url = e($config->url);
+        // Masked as an exception message would be: URL credentials and query values.
+        $url = e(Redactor::forConnection($config->url, $config->apiKey())->redact($config->url));
         $remote = $config->remote ? 'yes' : 'no';
         $key = $config->hasApiKey() ? 'yes' : 'no';
         $usable = $config->remote && ! $config->hasApiKey() ? 'no' : 'yes';

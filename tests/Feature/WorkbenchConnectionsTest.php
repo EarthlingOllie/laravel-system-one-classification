@@ -95,6 +95,32 @@ it('lists every configured connection, whether it has a key, and never the key',
         ->assertDontSee(WORKBENCH_KEY);
 });
 
+// Review finding: /limits showed the profile as the raw config wrote it, even one the manager
+// refuses; it now shows what the manager reads.
+it('shows no profile on /limits for a config the manager refuses', function (): void {
+    config(['system-one.connections.local.profile' => 'JEV']);
+    Http::fake();
+
+    $this->get('/limits')
+        ->assertStatus(500)
+        ->assertSee('data-profile=""', escape: false)
+        ->assertSee('data-error="InvalidConfiguration"', escape: false);
+
+    Http::assertNothingSent();
+});
+
+// Review finding: the page printed each URL as configured, credentials included.
+it('masks the credentials in a connection URL', function (): void {
+    config(['system-one.connections.lan' => ['url' => 'http://ollie:s3cret-pass@laya.lan:8000/laya?api_key=q-secret']]);
+
+    $this->get('/connections')
+        ->assertOk()
+        ->assertSee('data-url="http://***@laya.lan:8000/laya?api_key=***"', escape: false)
+        ->assertDontSee('s3cret-pass')
+        ->assertDontSee('q-secret')
+        ->assertDontSee('ollie');
+});
+
 it('links to the connections page from the status page', function (): void {
     $this->get('/')->assertOk()->assertSee('href="/connections"', escape: false);
 });
