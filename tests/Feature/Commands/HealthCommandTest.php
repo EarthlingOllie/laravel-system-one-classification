@@ -69,7 +69,7 @@ it('exits with 1 when the server cannot be reached, with the URL and key masked'
 
     $this->artisan('system-one:health')
         ->expectsOutput('Connection: local (http://***@laya.test:8000)')
-        ->expectsOutput('Unreachable: The model server at http://***@laya.test:8000 could not be reached after 3 attempts: cURL error 7: refused (***)')
+        ->expectsOutput('Unreachable: The model server at http://***@laya.test:8000 could not be reached: cURL error 7: refused (***)')
         ->doesntExpectOutputToContain('sk-secret')
         ->doesntExpectOutputToContain('pw@')
         ->assertExitCode(Command::FAILURE);
@@ -88,7 +88,7 @@ it('exits with 1 when the server answers with a 5xx', function (): void {
     Http::fake(['*' => Http::response(['detail' => 'server busy'], 503)]);
 
     $this->artisan('system-one:health')
-        ->expectsOutput('Unhealthy: The model server is unavailable (HTTP 503 after 3 attempts): server busy')
+        ->expectsOutput('Unhealthy: The model server is unavailable (HTTP 503): server busy')
         ->assertExitCode(Command::FAILURE);
 });
 

@@ -570,8 +570,11 @@ How the typing works:
     `{status, body}` arrays, so stores that refuse to unserialize objects work;
     a hit is decoded again, with no latency. A store that throws, a /health
     that is refused or unreadable, and an entry that does not decode are
-    reported through the exception handler and skipped; an unreachable server
-    fails the decision as sending it would.
+    reported through the exception handler and skipped. On the integration
+    branch the /health read is a probe sent once (`Transport::get()`), and one
+    that cannot reach the server is skipped and reported too: the decision then
+    goes out with the connection's retries (#9), which decide whether the host
+    is really down, instead of the probe spending that budget first.
   - Trade-offs kept on purpose: the /health read costs one cheap GET per
     cached decision, hits included, so a revision change is never missed (a
     memo of the revisions would serve stale answers for its lifetime); a

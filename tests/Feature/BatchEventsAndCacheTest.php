@@ -158,7 +158,7 @@ it('skips the cache for a batch when a loaded checkpoint has no revision, as dec
     expect($sent->getArrayCopy())->toBe(['a', 'b', 'a', 'b']);
 });
 
-it('fails every context of a cached batch when the health cannot be read for an unreachable server', function (): void {
+it('fails every context of a cached batch when the server cannot be reached', function (): void {
     config(['system-one.cache' => ['enabled' => true, 'store' => 'array', 'ttl' => 60]]);
     Http::fake(['*' => Http::failedConnection('refused')]);
     Event::fake([DecisionFailed::class]);

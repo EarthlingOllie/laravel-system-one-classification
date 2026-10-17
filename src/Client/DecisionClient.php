@@ -338,17 +338,17 @@ final readonly class DecisionClient implements Decider
     /**
      * The checkpoint revisions to key on, read from the server's /health.
      *
-     * @return ?non-empty-array<array-key, string> null when the cache is skipped for this decision
+     * The probe is sent once (Transport::get()). When it cannot reach the server, or its answer
+     * is refused or unreadable, the cache is skipped for this decision (and the reason reported):
+     * the decision is then sent with the connection's retries, which decide whether the host is
+     * really down.
      *
-     * @throws HostUnavailable when the server cannot be reached, as the decision would fail the same way
+     * @return ?non-empty-array<array-key, string> null when the cache is skipped for this decision
      */
     private function revisions(ResponseCache $cache): ?array
     {
-        // Only an unreachable server makes the transport throw, and that fails the decision.
-        $health = $this->transport->get(SystemOneCodec::HEALTH_PATH);
-
         try {
-            $revisions = $this->codec->decodeRevisions($health);
+            $revisions = $this->codec->decodeRevisions($this->transport->get(SystemOneCodec::HEALTH_PATH));
         } catch (SystemOneException $unreadable) {
             $cache->skipped($unreadable);
 

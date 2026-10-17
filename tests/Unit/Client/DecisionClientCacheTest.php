@@ -179,12 +179,19 @@ it('reports and skips the cache when the health response is refused or malformed
     'no revisions' => [new Response(200, '{"status":"ok"}'), MalformedResponse::class],
 ]);
 
-it('fails the decision without sending it when the server cannot be reached for its health', function (): void {
-    $transport = new readonly class implements Transport
+// Review finding: the /health probe is sent once; when it cannot reach the server the cache is
+// skipped, and the decision goes out with the connection's retries (#9), which decide whether
+// the host is really down.
+it('skips the cache, reporting why, and sends the decision when the health probe cannot reach the server', function (): void {
+    $transport = new class implements Transport
     {
+        public int $posts = 0;
+
         public function post(string $path, array $body): Response
         {
-            throw new LogicException('The decision should not be sent.');
+            $this->posts++;
+
+            return new Response(200, '{"answers":{"churn":{"type":"noul","noul":0.4}}}');
         }
 
         public function get(string $path): Response
@@ -194,9 +201,13 @@ it('fails the decision without sending it when the server cannot be reached for 
     };
     $cache = new ArrayResponseCache;
 
-    expect(fn () => (new DecisionClient($transport, new SystemOneCodec, cache: $cache))->decide(cachedChurnDecision()))
-        ->toThrow(HostUnavailable::class, 'Connection refused')
-        ->and($cache->skipped->count())->toBe(0);
+    $answer = (new DecisionClient($transport, new SystemOneCodec, cache: $cache))->decide(cachedChurnDecision());
+
+    expect($answer->get(Question::yesNo('churn', 'Does the customer threaten to cancel?'))->probability)->toBe(0.4)
+        ->and($transport->posts)->toBe(1)
+        ->and($cache->skipped->count())->toBe(1)
+        ->and($cache->skipped[0])->toBeInstanceOf(HostUnavailable::class)
+        ->and($cache->keys())->toBe([]);
 });
 
 it('reports a cached entry it cannot read, then decides and overwrites it', function (): void {

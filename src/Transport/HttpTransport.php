@@ -23,8 +23,10 @@ use function min;
  * Sends requests to one System One host (laya-serve, hosted Laya or Jev) with Laravel's HTTP
  * client: decisions as a JSON POST, and GETs such as `/health`.
  *
- * When the host cannot be reached or answers with a 5xx, either is sent again as the
- * RetryPolicy says, waiting its backoff delays in between; a 4xx is returned at once.
+ * When the host cannot be reached or answers with a 5xx, a POST is sent again as the
+ * RetryPolicy says, waiting its backoff delays in between; a 4xx is returned at once. A GET is
+ * a probe and is sent once: a deploy's health check fails fast, and the cache's /health read
+ * does not wait out a busy server before the decision's own retries.
  *
  * The API key goes out only as the bearer token. It is held as a SensitiveParameterValue, so
  * var_dump(), print_r(), var_export() and Laravel's dump() of the transport (or of the client
@@ -55,7 +57,15 @@ final readonly class HttpTransport implements Transport
 
     public function get(string $path): Response
     {
-        return $this->retrying(static fn (PendingRequest $request): HttpResponse => $request->get($path));
+        $outcome = $this->send(static fn (PendingRequest $request): HttpResponse => $request->get($path), 1);
+
+        if ($outcome instanceof Response) {
+            return $outcome;
+        }
+
+        $redactor = $this->redactor();
+
+        throw HostUnavailable::unreachable($redactor->redact($this->baseUrl), $redactor->redact($outcome->getMessage()), 1);
     }
 
     /**

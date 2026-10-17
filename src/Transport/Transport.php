@@ -24,7 +24,7 @@ interface Transport
     public function post(string $path, array $body): Response;
 
     /**
-     * A GET with no body, such as the server's `/health`.
+     * A GET with no body, such as the server's `/health`: a probe, sent once.
      *
      * @throws HostUnavailable when the server cannot be reached
      */

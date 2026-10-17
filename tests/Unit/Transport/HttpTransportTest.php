@@ -336,17 +336,26 @@ it('keeps the URL credentials and API key out of HostUnavailable from a get', fu
         ->toThrow(HostUnavailable::class, 'The model server at http://***@laya.test could not be reached: cURL error 7: refused (key ***)');
 });
 
-it('retries a get as it retries a post, with the bearer token on every attempt', function (): void {
+// Review finding: a GET is a probe (/health for the cache and system-one:health), so it is sent
+// once: a deploy check fails fast, and a busy server is not probed through the whole backoff
+// before the decision's own retries.
+it('sends a get once, whatever the retry policy, with the bearer token', function (): void {
     $http = new Factory;
-    $http->fake(['*' => $http->sequence()->pushFailedConnection('refused')->push('{}', 503)->push('{"status":"ok"}', 200)]);
+    $http->fake(['*' => $http->sequence()->push('{}', 503)->push('{"status":"ok"}', 200)]);
     $sleeper = new RecordingSleeper;
+    $transport = new HttpTransport($http, 'http://laya.test', 'secret-key', retry: new RetryPolicy(2, 10), sleeper: $sleeper);
 
-    $response = (new HttpTransport($http, 'http://laya.test', 'secret-key', retry: new RetryPolicy(2, 10), sleeper: $sleeper))->get('/health');
+    expect($transport->get('/health'))->toEqual(new Response(503, '{}'))
+        ->and($sleeper->waits())->toBe([]);
+    $http->assertSentCount(1);
+    $http->assertSent(fn (Request $request): bool => $request->header('Authorization') === ['Bearer secret-key']);
 
-    expect($response)->toEqual(new Response(200, '{"status":"ok"}', attempts: 3))
-        ->and($sleeper->waits())->toBe([10_000, 20_000])
-        ->and($http->recorded()->map(fn (array $sent): array => [$sent[0]->method(), $sent[0]->header('Authorization')])->all())
-        ->toBe(array_fill(0, 3, ['GET', ['Bearer secret-key']]));
+    $http = new Factory;
+    $http->fake(['*' => $http->sequence()->pushFailedConnection('refused')->push('{}', 200)]);
+
+    expect(fn () => (new HttpTransport($http, 'http://laya.test', retry: new RetryPolicy(2, 10), sleeper: $sleeper))->get('/health'))
+        ->toThrow(HostUnavailable::class, 'The model server at http://laya.test could not be reached: refused');
+    $http->assertSentCount(1);
 });
 
 it('gets a path under a base URL that has a path of its own, with no body', function (): void {
