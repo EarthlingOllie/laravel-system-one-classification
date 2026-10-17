@@ -68,8 +68,16 @@ it('agrees with every request laya-serve accepted the shape of', function (strin
     expect(JevSchema::errors(LayaFixtures::requestBody($scenario)))->toBe([]);
 })->with(['noul', 'choice', 'score', 'multiple_questions', 'below_min_confidence', 'too_many_options', 'unknown_model', 'invalid_request', 'unauthorized_bad_key']);
 
+// Any schema must refuse these. The messages are the stand-in's: Jev's own document may word
+// or nest its errors differently, so they are checked only while the stand-in is in use.
 it('is not vacuous: it refuses bodies the protocol does not allow', function (array $body, string $error): void {
-    expect(implode("\n", JevSchema::errors($body)))->toContain($error);
+    $errors = JevSchema::errors($body);
+
+    expect($errors)->not->toBe([]);
+
+    if (JevSchema::isProvisional()) {
+        expect(implode("\n", $errors))->toContain($error);
+    }
 })->with([
     'no state (laya-serve answered 400)' => [LayaFixtures::requestBody('missing_state'), 'state: The property state is required'],
     'min_confidence above 1 (laya-serve answered 422)' => [LayaFixtures::requestBody('invalid_min_confidence'), 'min_confidence: Must have a maximum value less than or equal to 1'],

@@ -26,7 +26,9 @@ use function json_encode;
  * (api.typesafe.ai was unreachable wherever this package was built so far), the PROVISIONAL
  * stand-in next to it is used instead: written by hand from the protocol laya-ai.com documents
  * and laya-serve accepted, and marked `x-provisional` so isProvisional() can say so. Fetching
- * the real document switches every contract test over to it, with no other change.
+ * the real document switches every contract test over to it: the bodies the codec encodes
+ * must then match Jev's own schema, and the bodies the tests expect it to refuse must still be
+ * refused (only the stand-in's error wording is not checked against it).
  */
 final readonly class JevSchema
 {
@@ -50,12 +52,20 @@ final readonly class JevSchema
         return self::at(['info', 'x-provisional']) === true;
     }
 
+    /** The document in use, read once per path for the whole run. */
     public static function document(): stdClass
     {
-        $json = file_get_contents(self::path());
-        $document = is_string($json) ? json_decode($json) : null;
+        /** @var array<string, stdClass> $documents */
+        static $documents = [];
+        $path = self::path();
 
-        return $document instanceof stdClass ? $document : throw new RuntimeException(self::path().' is not a JSON object.');
+        if (! isset($documents[$path])) {
+            $json = file_get_contents($path);
+            $document = is_string($json) ? json_decode($json) : null;
+            $documents[$path] = $document instanceof stdClass ? $document : throw new RuntimeException($path.' is not a JSON object.');
+        }
+
+        return $documents[$path];
     }
 
     /**
@@ -98,10 +108,10 @@ final readonly class JevSchema
      */
     private static function at(array $keys): mixed
     {
-        $value = json_decode((string) json_encode(self::document()), true);
+        $value = self::document();
 
         foreach ($keys as $key) {
-            $value = is_array($value) ? ($value[$key] ?? null) : null;
+            $value = $value instanceof stdClass ? ($value->{$key} ?? null) : null;
         }
 
         return $value;
