@@ -249,16 +249,20 @@ Route::get('/score', function (Request $request) use ($ticket, $model, $decision
  * One choice question over Workbench\App\Enums\Topic's 101 cases, one more than the laya
  * profile allows: on a laya connection the decision fails with InvalidDecision before anything
  * is sent; with SYSTEM_ONE_PROFILE=jev, or SYSTEM_ONE_TOURNAMENT_GROUPING=true for a Laya
- * server started with LAYA_TOURNAMENT_GROUP, it is sent. The page names the profile the
- * default connection's config picks.
+ * server started with LAYA_TOURNAMENT_GROUP, it is sent. The page names the profile and the
+ * tournament grouping the default connection's config picks.
  */
 Route::get('/limits', function (Request $request) use ($ticket, $model, $decision, $failure, $page): Response {
     $text = $ticket($request);
     $pinned = $model($request);
     $topic = Question::choice('topic', Topic::class, 'Which topic is this about?');
     $connection = config('system-one.default');
-    $profile = config('system-one.connections.'.(is_string($connection) ? $connection : '').'.profile');
+    $settings = config('system-one.connections.'.(is_string($connection) ? $connection : ''));
+    $settings = is_array($settings) ? $settings : [];
+    // Shown as the config states them (the manager refuses anything it cannot read).
+    $profile = $settings['profile'] ?? null;
     $profile = e(is_string($profile) && $profile !== '' ? $profile : 'laya');
+    $grouping = filter_var($settings['tournament_grouping'] ?? false, FILTER_VALIDATE_BOOL) ? 'yes' : 'no';
     $options = count($topic->options());
     $status = 200;
 
@@ -277,7 +281,7 @@ Route::get('/limits', function (Request $request) use ($ticket, $model, $decisio
         [$status, $outcome] = $failure($exception);
     }
 
-    $outcome = "<p id=\"profile\" data-profile=\"{$profile}\"><strong>Profile:</strong> {$profile}</p>{$outcome}";
+    $outcome = "<p id=\"profile\" data-profile=\"{$profile}\" data-tournament-grouping=\"{$grouping}\"><strong>Profile:</strong> {$profile}, tournament grouping: {$grouping}</p>{$outcome}";
 
     return new Response($page("A choice over {$options} topics", e($text), e($topic->instructions), $pinned, $outcome), $status);
 });

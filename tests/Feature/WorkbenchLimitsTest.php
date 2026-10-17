@@ -35,24 +35,30 @@ it('shows the InvalidDecision for a choice over more options than the laya profi
         ->assertStatus(500)
         ->assertSee('data-error="InvalidDecision"', escape: false)
         ->assertSee('data-profile="laya"', escape: false)
+        ->assertSee('data-tournament-grouping="no"', escape: false)
         ->assertSee("Choice question 'topic' has 101 options, more than the 100 the laya profile allows per choice question.");
 
     Http::assertNothingSent();
 });
 
-it('sends the same choice when the connection allows 255 options', function (array $connection): void {
+it('sends the same choice when the connection allows 255 options', function (array $connection, string $profile, string $grouping): void {
     config(['system-one.connections.local' => [...config('system-one.connections.local'), ...$connection]]);
     Http::fake(['*' => Http::response(topicResponse())]);
 
+    // Review finding: the page named the profile but not tournament grouping, so it showed
+    // 'laya' (100 options) while sending 101.
     $this->get('/limits')
         ->assertOk()
+        ->assertSee("data-profile=\"{$profile}\"", escape: false)
+        ->assertSee("data-tournament-grouping=\"{$grouping}\"", escape: false)
         ->assertSee('data-value="Topic042"', escape: false)
         ->assertSee('data-options="101"', escape: false);
 
     Http::assertSent(fn (Request $request): bool => count((array) $request['questions']['topic']['criteria']) === 101);
 })->with([
-    'jev' => [['profile' => 'jev']],
-    'laya with tournament grouping' => [['profile' => 'laya', 'tournament_grouping' => true]],
+    'jev' => [['profile' => 'jev'], 'jev', 'no'],
+    'laya with tournament grouping' => [['profile' => 'laya', 'tournament_grouping' => true], 'laya', 'yes'],
+    'laya with tournament grouping from env' => [['profile' => 'laya', 'tournament_grouping' => '1'], 'laya', 'yes'],
 ]);
 
 it('pins the checkpoint given as ?model= on every question page', function (string $page, array $answer): void {
