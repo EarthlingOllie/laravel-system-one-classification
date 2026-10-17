@@ -4,9 +4,17 @@ declare(strict_types=1);
 
 namespace EarthlingOllie\SystemOneClassification\Transport;
 
+use JsonException;
+use SensitiveParameter;
+use stdClass;
+
 use function array_filter;
 use function array_map;
+use function get_object_vars;
+use function is_array;
 use function is_string;
+use function json_decode;
+use function json_encode;
 use function parse_url;
 use function preg_replace;
 use function rawurldecode;
@@ -45,7 +53,7 @@ final readonly class Redactor
     /** @var list<string> longest first, so a secret that contains another is masked whole */
     private array $secrets;
 
-    public function __construct(string ...$secrets)
+    public function __construct(#[SensitiveParameter] string ...$secrets)
     {
         $variants = [];
 
@@ -60,7 +68,7 @@ final readonly class Redactor
     }
 
     /** A redactor for one connection: its API key, and the user and password in its URL. */
-    public static function forConnection(string $url, ?string $apiKey): self
+    public static function forConnection(string $url, #[SensitiveParameter] ?string $apiKey): self
     {
         $userinfo = array_filter([parse_url($url, PHP_URL_USER), parse_url($url, PHP_URL_PASS)], is_string(...));
 
@@ -76,5 +84,39 @@ final readonly class Redactor
             ['$1'.self::MASK.'@', self::MASK, '$1='.self::MASK, '$1'.self::MASK],
             str_replace($this->secrets, self::MASK, $text),
         ) ?? self::MASK;
+    }
+
+    /**
+     * A response body with every credential masked. A JSON body has each string in it
+     * redacted and stays JSON with the same structure, so a `detail` can still be read out of
+     * it (redacting the raw text could swallow the closing quote along with a URL's query
+     * value); anything else is redacted as text.
+     */
+    public function redactBody(string $body): string
+    {
+        try {
+            $decoded = json_decode($body, flags: JSON_THROW_ON_ERROR);
+        } catch (JsonException) {
+            return $this->redact($body);
+        }
+
+        return json_encode($this->redactStrings($decoded), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION | JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR);
+    }
+
+    private function redactStrings(mixed $value): mixed
+    {
+        if (is_string($value)) {
+            return $this->redact($value);
+        }
+
+        if (is_array($value)) {
+            return array_map($this->redactStrings(...), $value);
+        }
+
+        if ($value instanceof stdClass) {
+            return (object) array_map($this->redactStrings(...), get_object_vars($value));
+        }
+
+        return $value;
     }
 }

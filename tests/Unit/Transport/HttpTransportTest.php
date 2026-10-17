@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use EarthlingOllie\SystemOneClassification\Client\DecisionClient;
 use EarthlingOllie\SystemOneClassification\Exceptions\HostUnavailable;
+use EarthlingOllie\SystemOneClassification\Protocol\SystemOneCodec;
 use EarthlingOllie\SystemOneClassification\Tests\Support\RecordingSleeper;
 use EarthlingOllie\SystemOneClassification\Transport\HttpTransport;
 use EarthlingOllie\SystemOneClassification\Transport\Response;
@@ -101,6 +103,44 @@ it('raises HostUnavailable for a real refused connection, with no secret anywher
             ->and((string) $unavailable)->not->toContain('s3cret-pass')->not->toContain('q-secret')->not->toContain('sk-bearer')->not->toContain('ollie');
     }
 });
+
+it('keeps the API key out of every dump of the transport and of the client around it', function (): void {
+    $transport = new HttpTransport(new Factory, 'http://laya.test', 'sk-bearer-secret');
+    $client = new DecisionClient($transport, new SystemOneCodec);
+
+    ob_start();
+    var_dump($transport, $client);
+    $dumped = (string) ob_get_clean();
+
+    expect($dumped)->toContain('SensitiveParameterValue')->not->toContain('sk-bearer-secret')
+        ->and(print_r($client, true))->not->toContain('sk-bearer-secret')
+        ->and(var_export($client, true))->not->toContain('sk-bearer-secret')
+        ->and(json_encode($client, JSON_THROW_ON_ERROR))->not->toContain('sk-bearer-secret')
+        ->and(fn () => serialize($client))->toThrow(Exception::class, "Serialization of 'SensitiveParameterValue' is not allowed");
+});
+
+it('marks the API key as a sensitive parameter, so stack traces never print it', function (): void {
+    $key = (new ReflectionMethod(HttpTransport::class, '__construct'))->getParameters()[2];
+
+    expect($key->name)->toBe('apiKey')
+        ->and($key->getAttributes(SensitiveParameter::class))->toHaveCount(1);
+});
+
+it('masks the API key and URL secrets in the body of an error response', function (int $status): void {
+    $http = new Factory;
+    $http->fake(['*' => Factory::response('{"detail":"key sk-bearer is not valid for http://u:pw@laya.test/?sig=abc"}', $status)]);
+
+    expect((new HttpTransport($http, 'http://u:pw@laya.test', 'sk-bearer'))->post('/v1/systemone', []))
+        ->toEqual(new Response($status, '{"detail":"key *** is not valid for http://***@laya.test/?sig=***"}'));
+})->with([199, 301, 401, 403, 422, 500, 503]);
+
+it('passes a successful body through unchanged', function (int $status): void {
+    $body = '{"answers":{"x":{"type":"noul","noul":0.5}},"note":"sk-bearer token=abc"}';
+    $http = new Factory;
+    $http->fake(['*' => Factory::response($body, $status)]);
+
+    expect((new HttpTransport($http, 'http://laya.test', 'sk-bearer'))->post('/v1/systemone', [])->body)->toBe($body);
+})->with([200, 204, 299]);
 
 it('applies the configured timeout', function (): void {
     $http = new Factory;

@@ -73,3 +73,31 @@ it('masks the whole text when a pattern cannot run', function (): void {
         ini_set('pcre.backtrack_limit', (string) $limit);
     }
 });
+
+it('masks every string inside a JSON body and keeps it valid JSON', function (): void {
+    $body = '{"detail":"bad key sk-1 at http://u:p@laya.test/?sig=abc","errors":[{"msg":"token=t0k","loc":["body",0]}],"n":1.0,"ok":false,"none":null,"empty":{},"list":[]}';
+
+    expect(Redactor::forConnection('http://laya.test', 'sk-1')->redactBody($body))
+        ->toBe('{"detail":"bad key *** at http://***@laya.test/?sig=***","errors":[{"msg":"token=***","loc":["body",0]}],"n":1.0,"ok":false,"none":null,"empty":{},"list":[]}');
+});
+
+it('keeps slashes and non-ASCII text in a JSON body as they were', function (): void {
+    expect((new Redactor('k'))->redactBody('{"detail":"Schlüssel k für /v1/systemone"}'))
+        ->toBe('{"detail":"Schlüssel *** für /v1/systemone"}');
+});
+
+it('masks a JSON string body and leaves other JSON scalars alone', function (string $body, string $redacted): void {
+    expect((new Redactor('k3y'))->redactBody($body))->toBe($redacted);
+})->with([
+    ['"no k3y"', '"no ***"'],
+    ['42', '42'],
+    ['null', 'null'],
+]);
+
+it('masks a body that is not JSON as text', function (string $body, string $redacted): void {
+    expect((new Redactor('k3y'))->redactBody($body))->toBe($redacted);
+})->with([
+    ['<html>Unauthorized: k3y</html>', '<html>Unauthorized: ***</html>'],
+    ['{"detail": "k3y"', '{"detail": "***"'],
+    ['', ''],
+]);
