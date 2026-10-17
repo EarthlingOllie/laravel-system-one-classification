@@ -176,8 +176,10 @@ final readonly class DecisionClient implements Decider
         $entries = [];
 
         foreach ($batches as $body) {
+            $started = $this->clock->now();
             $response = $this->transport->post(SystemOneCodec::BATCH_PATH, $body);
-            $results = $results->concat($this->codec->decodeBatch($decision, count($body['states']), $response));
+            $latencyMs = ($this->clock->now() - $started) * 1000;
+            $results = $results->concat($this->codec->decodeBatch($decision, count($body['states']), $response, $latencyMs));
             $entries = [...$entries, ...($this->cache === null ? [] : $this->codec->batchEntries($response))];
         }
 

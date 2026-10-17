@@ -196,10 +196,11 @@ final readonly class SystemOneCodec
 
     /**
      * Reads one batch response: a Result per state sent, in order, each with the meta its
-     * entry reports (and no latency: the request's covers every state), and the response's
-     * `total_usage` (null when the server reports none).
+     * entry reports and the latency of the request (one round trip carried every state), and
+     * the response's `total_usage` (null when the server reports none).
      *
      * @param  int  $states  how many states the request sent
+     * @param  ?float  $latencyMs  the request's round trip, measured by the caller
      *
      * @throws HostUnavailable on a 5xx
      * @throws RejectedByModel on a 4xx
@@ -207,7 +208,7 @@ final readonly class SystemOneCodec
      *                           or there is not exactly one result per state
      * @throws InvalidDecision for a decision encode() refuses, so never for one that was sent
      */
-    public function decodeBatch(Decision $decision, int $states, Response $response): ResultSet
+    public function decodeBatch(Decision $decision, int $states, Response $response, ?float $latencyMs = null): ResultSet
     {
         $body = self::object($response, 'batch response');
         $results = $body['results'] ?? null;
@@ -228,7 +229,7 @@ final readonly class SystemOneCodec
                     throw MalformedResponse::because('The response is not a JSON object.', $response->body);
                 }
 
-                $decoded[] = $this->result($decision, $payload, $response->body, null);
+                $decoded[] = $this->result($decision, $payload, $response->body, $latencyMs);
             } catch (MalformedResponse $malformed) {
                 throw MalformedResponse::because("Result {$position} of the batch response: {$malformed->getMessage()}", $response->body);
             }

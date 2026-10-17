@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use EarthlingOllie\SystemOneClassification\Client\Clock;
 use EarthlingOllie\SystemOneClassification\Client\DecisionClient;
 use EarthlingOllie\SystemOneClassification\Domain\Context;
 use EarthlingOllie\SystemOneClassification\Domain\Decision;
@@ -189,4 +190,26 @@ it('reads batch results with an equal handle built separately, as decide() resul
     expect($results[0]->get(Question::yesNo('churn', 'Does the customer threaten to cancel?'))->probability)->toBe(0.001)
         ->and(fn () => $results[0]->get(Question::yesNo('churn', 'Something else?')))
         ->toThrow(UnknownQuestion::class);
+});
+
+// Review finding: a null latency means "from the cache" (DecisionMade), so a server-answered batch
+// result carries the round trip of the request that carried its state.
+it('gives each result the latency of the request that carried it', function (): void {
+    $clock = new class implements Clock
+    {
+        /** @var list<float> */
+        private array $readings = [10.0, 10.25, 20.0, 20.5];
+
+        public function now(): float
+        {
+            return array_shift($this->readings) ?? throw new LogicException('The clock was read more often than expected.');
+        }
+    };
+    $client = new DecisionClient(new RecordingBatchTransport, new SystemOneCodec, $clock);
+
+    $results = $client->decideMany(tickets(65), Decision::about(Context::text('template'))->ask(batchChurn()));
+
+    expect($results[0]->meta->latencyMs)->toBe(250.0)
+        ->and($results[63]->meta->latencyMs)->toBe(250.0)
+        ->and($results[64]->meta->latencyMs)->toBe(500.0);
 });

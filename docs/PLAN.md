@@ -587,7 +587,9 @@ How the typing works:
     branch this is #9's key: sent when a decision pins none, a pin
     (`withModel()`, #6) wins, and it is held to the profile.
   - Batches (integration branch): `decideMany()` treats each context as one
-    decision, as the fake does. The observer gets a `DecisionMade` per context
+    decision, as the fake does. Each result's meta carries the latency of the
+    request that carried its state, so a null latency still means "from the
+    cache". The observer gets a `DecisionMade` per context
     (its own context, result and `cached`), or, when the batch fails, a
     `DecisionFailed` per context with the batch's exception (one, for the
     decision itself, when the batch is refused before it has contexts). With the
