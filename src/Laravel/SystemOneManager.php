@@ -16,15 +16,11 @@ use EarthlingOllie\SystemOneClassification\Transport\HttpTransport;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Http\Client\Factory;
 
-use function array_filter;
 use function array_is_list;
-use function array_map;
-use function array_values;
 use function explode;
 use function filter_var;
 use function implode;
 use function is_array;
-use function is_bool;
 use function is_numeric;
 use function is_scalar;
 use function is_string;
@@ -122,10 +118,7 @@ final readonly class SystemOneManager
      */
     private static function tournamentGrouping(string $name, mixed $value): bool
     {
-        if (is_bool($value)) {
-            return $value;
-        }
-
+        // filter_var() passes true and false through and reads '1', 'true', 'on', '0', '' ...
         $value = is_scalar($value) ? filter_var($value, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) : null;
 
         return $value ?? throw InvalidConfiguration::invalidTournamentGrouping($name);
@@ -144,7 +137,17 @@ final readonly class SystemOneManager
     private static function models(string $name, mixed $models): array
     {
         if (is_string($models)) {
-            return array_values(array_filter(array_map(trim(...), explode(',', $models)), static fn (string $model): bool => $model !== ''));
+            $names = [];
+
+            foreach (explode(',', $models) as $model) {
+                $model = trim($model);
+
+                if ($model !== '') {
+                    $names[] = $model;
+                }
+            }
+
+            return $names;
         }
 
         if (! is_array($models) || ! array_is_list($models)) {
