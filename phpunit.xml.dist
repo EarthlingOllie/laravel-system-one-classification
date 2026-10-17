@@ -4,7 +4,7 @@
          bootstrap="vendor/autoload.php"
          cacheDirectory=".phpunit.cache"
          colors="true"
-         defaultTestSuite="Unit,Contract,Feature,Arch"
+         defaultTestSuite="Unit,Contract,Feature,Arch,Docs"
          failOnRisky="true"
          failOnWarning="true"
          failOnDeprecation="true"
@@ -30,6 +30,10 @@
         </testsuite>
         <testsuite name="Arch">
             <directory suffix="Test.php">tests/Arch</directory>
+        </testsuite>
+        <!-- The README and examples/: the README's snippets, and the examples that need no server. -->
+        <testsuite name="Docs">
+            <directory suffix="Test.php">tests/Docs</directory>
         </testsuite>
         <!-- Needs a running Laya server (docker). Not in the default suite: run `composer test:integration`. -->
         <testsuite name="Integration">

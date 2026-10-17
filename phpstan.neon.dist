@@ -2,6 +2,7 @@ parameters:
     level: max
     paths:
         - config
+        - examples
         - src
         - tests/Support
         - tests/TestCase.php
