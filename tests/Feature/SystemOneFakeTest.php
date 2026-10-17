@@ -210,7 +210,7 @@ it('answers on the configured default connection', function (): void {
     // Not the fake's assertions alone: Pest passes a test without assertions (failOnRisky is
     // not honoured), so a mutant that empties assertDecided() would slip through here.
     expect(failureOf(fn () => $fake->assertDecided(fn (Decision $decision, string $connection): bool => $connection === 'local')))
-        ->toStartWith('No decision matching the callback was made (1 were made).');
+        ->toStartWith('No decision matching the callback was made (1 decision was made).');
 });
 
 it('refuses a connection that is not configured, as the real client does', function (): void {
@@ -234,7 +234,7 @@ it('asserts a decision matching a callback was made', function (): void {
     $fake->assertDecided(fn (Decision $decision): bool => $decision->context->text === 'second');
 
     expect(failureOf(fn () => $fake->assertDecided(fn (Decision $decision): bool => $decision->context->text === 'third')))
-        ->toStartWith('No decision matching the callback was made (2 were made).');
+        ->toStartWith('No decision matching the callback was made (2 decisions were made).');
 });
 
 it('asserts how many decisions were made', function (): void {
@@ -244,7 +244,8 @@ it('asserts how many decisions were made', function (): void {
 
     $fake->assertDecidedTimes(2);
 
-    expect(failureOf(fn () => $fake->assertDecidedTimes(3)))->toStartWith('Expected 3 decisions to be made, but 2 were.');
+    expect(failureOf(fn () => $fake->assertDecidedTimes(3)))->toStartWith('Expected 3 decisions to be made, but 2 were.')
+        ->and(failureOf(fn () => $fake->assertDecidedTimes(1)))->toStartWith('Expected 1 decision to be made, but 2 were.');
 });
 
 it('asserts nothing was decided', function (): void {
@@ -253,7 +254,11 @@ it('asserts nothing was decided', function (): void {
     $fake->assertNothingDecided();
     SystemOne::decide(aboutTicket()->ask(fakeChurn()));
 
-    expect(failureOf(fn () => $fake->assertNothingDecided()))->toStartWith('Expected no decisions, but 1 was made.');
+    $once = failureOf(fn () => $fake->assertNothingDecided());
+    SystemOne::decide(aboutTicket()->ask(fakeChurn()));
+
+    expect($once)->toStartWith('Expected no decisions, but 1 decision was made.')
+        ->and(failureOf(fn () => $fake->assertNothingDecided()))->toStartWith('Expected no decisions, but 2 decisions were made.');
 });
 
 it('asserts a question was asked, by an equal handle', function (): void {

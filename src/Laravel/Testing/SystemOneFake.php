@@ -129,23 +129,20 @@ final class SystemOneFake implements ConnectionResolver, Fake
     public function assertDecided(callable $callback): void
     {
         $matching = array_filter($this->decided, static fn (array $made): bool => $callback($made['decision'], $made['connection']));
-        $made = count($this->decided);
 
-        Assert::assertNotEmpty($matching, "No decision matching the callback was made ({$made} were made).");
+        Assert::assertNotEmpty($matching, 'No decision matching the callback was made ('.$this->made().').');
     }
 
     public function assertDecidedTimes(int $times): void
     {
         $made = count($this->decided);
 
-        Assert::assertSame($times, $made, "Expected {$times} decisions to be made, but {$made} were.");
+        Assert::assertSame($times, $made, 'Expected '.self::decisions($times)." to be made, but {$made} were.");
     }
 
     public function assertNothingDecided(): void
     {
-        $made = count($this->decided);
-
-        Assert::assertSame(0, $made, "Expected no decisions, but {$made} was made.");
+        Assert::assertSame(0, count($this->decided), 'Expected no decisions, but '.$this->made().'.');
     }
 
     /**
@@ -166,6 +163,19 @@ final class SystemOneFake implements ConnectionResolver, Fake
         });
 
         Assert::assertNotEmpty($asked, "The question '{$question->key}' was not asked.");
+    }
+
+    /** "1 decision was made", "2 decisions were made": for the failure messages. */
+    private function made(): string
+    {
+        $made = count($this->decided);
+
+        return self::decisions($made).($made === 1 ? ' was' : ' were').' made';
+    }
+
+    private static function decisions(int $count): string
+    {
+        return $count === 1 ? '1 decision' : "{$count} decisions";
     }
 
     /**
