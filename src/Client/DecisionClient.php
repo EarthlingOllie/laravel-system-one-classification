@@ -93,7 +93,7 @@ final readonly class DecisionClient implements Decider
     {
         $results = new ResultSet([], new Usage(0, 0));
 
-        foreach ($this->codec->encodeBatches($decision, $contexts) as $body) {
+        foreach ($this->codec->encodeBatches($decision, $contexts, $this->model) as $body) {
             $response = $this->transport->post(SystemOneCodec::BATCH_PATH, $body);
             $results = $results->concat($this->codec->decodeBatch($decision, count($body['states']), $response));
         }
