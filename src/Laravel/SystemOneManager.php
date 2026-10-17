@@ -109,6 +109,8 @@ final readonly class SystemOneManager
             throw InvalidConfiguration::invalidTimeout($name);
         }
 
+        // Laravel's withToken() trims the key, so a blank one would go out as a bare "Bearer".
+        $apiKey = trim((string) $apiKey);
         $remote = self::flag($connection['remote'] ?? false) ?? throw InvalidConfiguration::invalidRemote($name);
 
         if ($remote && ! self::isSecure($url)) {

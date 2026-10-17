@@ -74,6 +74,30 @@ it('refuses a remote connection without a key, sending nothing', function (strin
         ->and($sent)->toHaveCount(0);
 })->with(['laya-hosted', 'jev'])->with(['unset' => null, 'empty' => '']);
 
+// Review finding: a blank key passed the check, and Laravel's withToken() trims it to a bare
+// "Bearer" header.
+it('treats a blank key as none', function (): void {
+    config(['system-one.connections.jev.api_key' => "  \t", 'system-one.connections.local.api_key' => ' ']);
+    $sent = fakeAnswers();
+
+    SystemOne::decide(namedDecision());
+
+    expect(fn () => SystemOne::connection('jev'))->toThrow(InvalidConfiguration::class, "System One connection 'jev' is a remote host, so it needs an 'api_key'")
+        ->and($sent)->toHaveCount(1)
+        ->and($sent[0]->hasHeader('Authorization'))->toBeFalse()
+        ->and(app(SystemOneManager::class)->configuration('local')->hasApiKey())->toBeFalse();
+});
+
+it('sends the key without the whitespace around it', function (): void {
+    config(['system-one.connections.jev.api_key' => ' '.NAMED_KEY."\n"]);
+    $sent = fakeAnswers();
+
+    SystemOne::connection('jev')->decide(namedDecision());
+
+    expect($sent[0]->header('Authorization'))->toBe(['Bearer '.NAMED_KEY])
+        ->and(app(SystemOneManager::class)->configuration('jev')->apiKey())->toBe(NAMED_KEY);
+});
+
 it('refuses any connection marked remote without a key, and lets one that is not go without', function (): void {
     config([
         'system-one.connections.mine' => ['url' => 'https://mine.test', 'remote' => 'true'],
