@@ -371,8 +371,10 @@ How the typing works:
     an unexpected body or any status but `ok`; 2 for an unknown connection.
   - `system-one:try [text] [--file=] --yes-no=... [--connection=] [--json]`
     asks each `--yes-no` (keyed q1, q2, ...) about the argument, the file or
-    stdin, and prints value, confidence (the reported value's probability) and
-    distribution per answer. Choice and score questions join as `--choice` and
+    stdin (refused with 2 when stdin is a terminal, rather than waiting on it),
+    and prints value, confidence (the reported value's probability) and
+    distribution per answer. Its errors go to stderr, so stdout stays valid JSON
+    under `--json`. Choice and score questions join as `--choice` and
     `--score` once #4/#5 add them; routing joins once #8's `Result::$meta` lands.
 - `Transport::get()` sits next to `post()` for the health probe; every
   transport implements both.
@@ -425,8 +427,13 @@ bin/
     `docker-compose.yml`, in Compose's own order) as new lines only, so the
     existing services and their formatting are untouched, and sets
     `SYSTEM_ONE_URL=http://laya:8000`, so it is reachable from the
-    `laravel.test` container. A file it cannot edit safely (flow-style
-    `services:`/`volumes:`, not YAML) is refused with exit 1 and left as it is.
+    `laravel.test` container. The new lines follow the file's own line endings
+    and each section's indentation, and Compose tags such as `!reset` are
+    accepted. A file it cannot edit safely (flow-style `services:`/`volumes:`,
+    not YAML) is refused with exit 1 and left as it is.
+  - The standalone file keeps the package's `name: system-one`, so every app
+    on a machine that uses it shares one server on port 8000 and one copy of
+    the weights (the file's header says so).
 - The repo also has its own dev Compose file, which runs a PHP container next to
   `laya` for integration tests. CI runs the same setup with the HF cache volume
   cached between runs: `.github/workflows/integration.yml` builds the image
