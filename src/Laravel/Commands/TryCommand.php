@@ -78,7 +78,7 @@ final class TryCommand extends Command
         $option = $this->option('connection');
 
         if ($instructions === []) {
-            $this->error('Ask at least one question, e.g. --yes-no="Does the customer threaten to cancel?"');
+            $this->problem('Ask at least one question, e.g. --yes-no="Does the customer threaten to cancel?"');
 
             return self::INVALID;
         }
@@ -100,7 +100,7 @@ final class TryCommand extends Command
             $name = is_string($option) ? $option : $manager->defaultConnection();
             $client = $manager->connection($name);
         } catch (InvalidDecision|InvalidConfiguration $invalid) {
-            $this->error($invalid->getMessage());
+            $this->problem($invalid->getMessage());
 
             return self::INVALID;
         }
@@ -112,7 +112,7 @@ final class TryCommand extends Command
         try {
             $result = $client->decide($decision);
         } catch (HostUnavailable|RejectedByModel|MalformedResponse $failed) {
-            $this->error($failed->getMessage());
+            $this->problem($failed->getMessage());
 
             return self::FAILURE;
         }
@@ -129,7 +129,7 @@ final class TryCommand extends Command
         $file = $this->option('file');
 
         if (is_string($argument) && is_string($file)) {
-            $this->error('Give the text as an argument or with --file, not both.');
+            $this->problem('Give the text as an argument or with --file, not both.');
 
             return null;
         }
@@ -140,7 +140,7 @@ final class TryCommand extends Command
 
         if (is_string($file)) {
             if (! is_file($file) || ! is_readable($file)) {
-                $this->error("Cannot read --file {$file}.");
+                $this->problem("Cannot read --file {$file}.");
 
                 return null;
             }
@@ -151,14 +151,14 @@ final class TryCommand extends Command
         $stdin = @fopen($this->stdin, 'rb');
 
         if ($stdin === false) {
-            $this->error('Cannot read the text from stdin.');
+            $this->problem('Cannot read the text from stdin.');
 
             return null;
         }
 
         // Nothing piped in: reading a terminal would hang until Ctrl-D with no hint why.
         if (($this->isTerminal)($stdin)) {
-            $this->error('No text to ask about: give it as an argument, with --file, or on stdin (cat ticket.txt | php artisan system-one:try ...).');
+            $this->problem('No text to ask about: give it as an argument, with --file, or on stdin (cat ticket.txt | php artisan system-one:try ...).');
 
             return null;
         }
@@ -202,6 +202,12 @@ final class TryCommand extends Command
     }
 
     /** The probability of the reported value, which is laya-serve's `answer_confidence` for a yes/no answer. */
+    /** Prints $message as an error on stderr, so stdout carries only the answers (valid JSON under --json). */
+    private function problem(string $message): void
+    {
+        $this->output->getErrorStyle()->writeln("<error>{$message}</error>");
+    }
+
     private static function confidence(YesNoAnswer $answer): float
     {
         return round(max($answer->probability, 1 - $answer->probability), 12);

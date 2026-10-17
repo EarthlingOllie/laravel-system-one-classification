@@ -227,6 +227,23 @@ it('exits with 1 when the server cannot be reached, refuses the decision or answ
     'malformed' => [fn () => Http::fake(['*' => Http::response('<html>')]), 'The response is not a JSON object.'],
 ]);
 
+it('writes errors to stderr, leaving stdout to the answers', function (array $arguments, string $message, int $exitCode): void {
+    Http::fake(['*' => Http::failedConnection('refused')]);
+    $command = new TryCommand;
+    $command->setLaravel(app());
+    $tester = new CommandTester($command);
+
+    $tester->execute([...$arguments, '--json' => true], ['interactive' => false, 'capture_stderr_separately' => true]);
+
+    expect($tester->getStatusCode())->toBe($exitCode)
+        ->and($tester->getDisplay())->toBe('')
+        ->and($tester->getErrorOutput())->toContain($message);
+})->with([
+    'unreachable' => [['text' => 'x', '--yes-no' => ['Q?']], 'could not be reached: refused', Command::FAILURE],
+    'no question' => [['text' => 'x'], 'Ask at least one question', Command::INVALID],
+    'unknown connection' => [['text' => 'x', '--yes-no' => ['Q?'], '--connection' => 'nope'], "System One connection 'nope' is not configured", Command::INVALID],
+]);
+
 it('is registered as system-one:try', function (): void {
     expect(app(Kernel::class)->all()['system-one:try'])->toBeInstanceOf(TryCommand::class);
 });
