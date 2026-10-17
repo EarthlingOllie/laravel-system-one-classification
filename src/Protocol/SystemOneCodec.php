@@ -232,15 +232,25 @@ final readonly class SystemOneCodec
     }
 
     /**
+     * The answer's `type` must be the one the question was sent as.
+     *
+     * @param  array<mixed>  $answer
+     */
+    private static function checkType(string $key, array $answer, string $type, string $body): void
+    {
+        $got = $answer['type'] ?? null;
+
+        if ($got !== $type) {
+            throw MalformedResponse::because("The answer for '{$key}' should have type '{$type}', got ".json_encode($got, JSON_THROW_ON_ERROR).'.', $body);
+        }
+    }
+
+    /**
      * @param  array<mixed>  $answer
      */
     private static function decodeYesNo(string $key, array $answer, string $body): YesNoAnswer
     {
-        $type = $answer['type'] ?? null;
-
-        if ($type !== 'noul') {
-            throw MalformedResponse::because("The answer for '{$key}' should have type 'noul', got ".json_encode($type, JSON_THROW_ON_ERROR).'.', $body);
-        }
+        self::checkType($key, $answer, 'noul', $body);
 
         $probability = $answer['noul'] ?? null;
 
@@ -282,11 +292,7 @@ final readonly class SystemOneCodec
     private function decodeChoice(ChoiceQuestion $question, array $answer, string $body): ChoiceAnswer
     {
         $key = $question->key;
-        $type = $answer['type'] ?? null;
-
-        if ($type !== 'choice') {
-            throw MalformedResponse::because("The answer for '{$key}' should have type 'choice', got ".json_encode($type, JSON_THROW_ON_ERROR).'.', $body);
-        }
+        self::checkType($key, $answer, 'choice', $body);
 
         $choice = $answer['choice'] ?? null;
 
@@ -333,11 +339,7 @@ final readonly class SystemOneCodec
     private function decodeScore(ScoreQuestion $question, array $answer, string $body): ScoreAnswer
     {
         $key = $question->key;
-        $type = $answer['type'] ?? null;
-
-        if ($type !== 'score') {
-            throw MalformedResponse::because("The answer for '{$key}' should have type 'score', got ".json_encode($type, JSON_THROW_ON_ERROR).'.', $body);
-        }
+        self::checkType($key, $answer, 'score', $body);
 
         // The server knows the levels only by index, lowest first: criteria went out as a
         // list, and legend and probabilities come back keyed "0", "1", ... (int keys here).
@@ -368,8 +370,10 @@ final readonly class SystemOneCodec
         $value = null;
         $highest = 0.0;
 
-        // The first of equally likely levels wins, as with the server's argmax. A level with
-        // probability 0 is never the most likely one, so all zeros leave no value.
+        // The server sends no most likely level for a score, only probabilities rounded to 4
+        // places, so the lowest of levels equally likely after rounding wins (as np.argmax
+        // picks the first). A level with probability 0 is never the most likely one, so all
+        // zeros leave no value.
         foreach ($distribution->entries() as ['case' => $case, 'probability' => $probability]) {
             if ($probability > $highest) {
                 $value = $case;
