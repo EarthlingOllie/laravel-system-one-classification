@@ -284,7 +284,7 @@ $result->get($department)->isConfident(0.8);                 // shorthand for an
 $result->get($department)->probabilityOf(Department::Other); // float
 $result->get($department)->distribution;                     // Distribution<Department>, ordered
 $result->get($urgency)->value;                               // Urgency::High
-$result->get($urgency)->expected;                            // 1.7 (expected ordinal level)
+$result->get($urgency)->expected;                            // 1.7 (expected level, on the backing values)
 $result->get($churn)->probability;                           // 0.91
 $result->get($churn)->isYes(threshold: 0.8);                 // bool
 $result->get($churn)->verdict(yes: 0.8, no: 0.2);            // Verdict::Yes | No | Unsure
@@ -332,6 +332,23 @@ How the typing works:
   `isConfident()`. `Result\Probability::check()` is the one [0, 1] check (NAN refused).
   An unknown label, a missing or extra probability, or a non-numeric confidence is a
   `MalformedResponse`.
+- **Score questions** (#5): `Question::score()` returns `Question\ScoreQuestion<TEnum>`
+  over an int-backed enum (a string-backed one is refused at its first case). `levels()`
+  lists `{case, value, description}` sorted by backing value, whatever the declaration
+  order, and goes out as `criteria`: a list of descriptions, index 0 first, because
+  laya-serve knows levels only by index. Every level must be described (`DescribesCases`
+  or `#[Describe]`, read by `Question\CaseDescription` for both enum question types); a
+  missing or blank description is an `InvalidDecision` naming the case.
+- **Score answers** (#5): `ScoreAnswer<TEnum>` has `value` (the most probable level; the
+  lowest of equally likely ones, as the server's argmax), `expected`, and
+  `answerConfidence`, `confidence`, `distribution` (in level order), `probabilityOf()` and
+  `isConfident()` as on choice answers. `expected` is on the backing values: the server's
+  `score` is an expected level *index*, and the codec maps index i to level i's value and a
+  fraction between two indexes the same fraction between their values (for levels backed
+  by 0..n-1, the server's number unchanged). `ScoreAnswer` refuses an `expected` outside the
+  lowest and highest value (`InvalidDistribution`). The answer's `legend` must give back
+  every description under the index it was sent with (key order aside); any other legend, a
+  `score` outside 0..n-1, or a missing or extra probability is a `MalformedResponse`.
 - **Typed errors.** Every exception the package throws implements the
   `Exceptions\SystemOneException` marker (enforced by the architecture tests,
   including a scan of every `throw` in `src/`).
