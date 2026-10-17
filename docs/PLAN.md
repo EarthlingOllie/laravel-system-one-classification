@@ -595,8 +595,11 @@ How the typing works:
     `decide()` keys it (a batch body is `decide()`'s with `state` swapped for
     `states`), so the two share entries; only misses are sent, as batches, and
     each result is stored as the single-call body `decide()` would have got
-    (`SystemOneCodec::batchEntries()`). The set's `usage` counts the requests
-    sent, so a batch answered from the cache alone reports zero tokens.
+    (`SystemOneCodec::batchEntries()`), as soon as its request answers, so a
+    later request that fails does not lose the answers already paid for. The
+    call itself fails then, so every context gets a `DecisionFailed`: the caller
+    gets no results. The set's `usage` counts the requests sent, so a batch
+    answered from the cache alone reports zero tokens.
   - The miss tests cover each part of the key the codec sends, a choice's
     options and their descriptions (#4) and a pinned model (#6) included.
 - Artisan commands. Built in #11 (`src/Laravel/Commands/`), each with exit

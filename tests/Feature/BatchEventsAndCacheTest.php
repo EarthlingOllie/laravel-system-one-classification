@@ -34,7 +34,7 @@ function churnIn(Result $result): float
 
 /**
  * Fakes laya-serve: /health reports the revision, and every state, single or batched, gets a
- * new probability (0.01, 0.02, ...) and routes to $checkpoint.
+ * new probability (0.001, 0.002, ...) and routes to $checkpoint.
  *
  * @param  array<string, ?string>  $revisions
  * @return ArrayObject<int, mixed> the states sent, in order
@@ -54,7 +54,7 @@ function fakeBatchServer(string $checkpoint = 'english', ?Closure $override = nu
         $answer = static function (mixed $state) use ($sent, $checkpoint): array {
             $sent->append($state);
 
-            return ['answers' => ['churn' => ['type' => 'noul', 'noul' => count($sent) / 100]], 'routing' => ['model' => $checkpoint]];
+            return ['answers' => ['churn' => ['type' => 'noul', 'noul' => count($sent) / 1000]], 'routing' => ['model' => $checkpoint]];
         };
 
         if (str_ends_with($request->url(), '/batch')) {
@@ -202,7 +202,7 @@ it('stores the answers of every request of a batch that spans several, each unde
     expect($sent)->toHaveCount(65)
         ->and(churnIn($again[0]))->toBe(churnIn($first[0]))
         ->and(churnIn($again[64]))->toBe(churnIn($first[64]))
-        ->and(churnIn($first[64]))->toBe(0.65);
+        ->and(churnIn($first[64]))->toBe(0.065);
     Http::assertSentCount(1 + 2 + 1);
 });
 
@@ -213,7 +213,7 @@ it('puts a cached answer and a fresh one back in the order of the contexts', fun
 
     $batch = SystemOne::decideMany([Context::text('known'), Context::text('new'), Context::text('known')], manyChurn());
 
-    expect([churnIn($batch[0]), churnIn($batch[1]), churnIn($batch[2])])->toBe([churnIn($known), 0.02, churnIn($known)]);
+    expect([churnIn($batch[0]), churnIn($batch[1]), churnIn($batch[2])])->toBe([churnIn($known), 0.002, churnIn($known)]);
 });
 
 it('reports no tokens for a batch answered from the cache alone', function (): void {
@@ -223,4 +223,23 @@ it('reports no tokens for a batch answered from the cache alone', function (): v
     SystemOne::decideMany([Context::text('a')], manyChurn());
 
     expect(SystemOne::decideMany([Context::text('a')], manyChurn())->usage)->toEqual(new Usage(0, 0));
+});
+
+// Review finding: a later request of a batch failing must not lose the answers already paid for.
+it('keeps the answers of the requests that succeeded when a later request of the batch fails', function (): void {
+    config(['system-one.cache' => ['enabled' => true, 'store' => 'array', 'ttl' => 60]]);
+    $batches = 0;
+    $sent = fakeBatchServer(override: function (Request $request) use (&$batches) {
+        return str_ends_with($request->url(), '/batch') && ++$batches === 2 ? Http::response(['detail' => 'down'], 503) : null;
+    });
+    $contexts = array_map(static fn (int $n): Context => Context::text("ticket {$n}"), range(0, 64));
+
+    expect(fn (): mixed => SystemOne::decideMany($contexts, manyChurn()))->toThrow(HostUnavailable::class);
+    $answered = count($sent);
+    SystemOne::decideMany($contexts, manyChurn());
+
+    // The first request's 64 answers come from the cache; only the 65th state is sent again.
+    expect($answered)->toBe(64)
+        ->and(count($sent))->toBe(65)
+        ->and($sent[64])->toBe('ticket 64');
 });

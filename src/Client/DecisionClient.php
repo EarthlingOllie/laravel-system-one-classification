@@ -24,6 +24,7 @@ use function array_is_list;
 use function array_key_exists;
 use function array_keys;
 use function array_map;
+use function array_slice;
 use function count;
 use function hash;
 use function in_array;
@@ -91,8 +92,11 @@ final readonly class DecisionClient implements Decider
      * contexts to ask about fails once, as the decision itself). With a cache, the server's
      * revisions are read once, each context is keyed exactly as decide() keys it (a batch body
      * is decide()'s with `state` swapped for `states`), so both share entries; only the misses
-     * are sent, and each answer is stored as decide() stores its response. The set's usage
-     * counts the requests sent, so a batch answered from the cache alone used none.
+     * are sent, and each answer is stored as decide() stores its response, as soon as its
+     * request answers: when a later request fails, asking again sends only what is left. The
+     * call itself still fails, so every context is reported failed: the caller gets no results.
+     * The set's usage counts the requests sent, so a batch answered from the cache alone used
+     * none.
      *
      * @param  list<Context>  $contexts
      *
@@ -108,7 +112,7 @@ final readonly class DecisionClient implements Decider
             $batches = $this->codec->encodeBatches($decision, $contexts, $this->model);
             [$results, $cached] = $this->cache === null
                 ? [$this->sendBatches($decision, $batches)[0], []]
-                : $this->resolveManyCached($this->cache, $decision, $contexts);
+                : $this->resolveManyCached($this->cache, $decision, $contexts, $batches);
         } catch (SystemOneException $exception) {
             foreach (self::asked($contexts, $decision) as $asked) {
                 $this->observer?->failed($asked, $exception);
@@ -182,16 +186,17 @@ final readonly class DecisionClient implements Decider
 
     /**
      * @param  list<Context>  $contexts  as encodeBatches() accepted them
+     * @param  non-empty-list<array{states: non-empty-list<string|array<string, mixed>>, questions: array<string, array<string, mixed>>}>  $batches  what encodeBatches() made of them
      * @return array{ResultSet, list<bool>} the results, and for each position whether it came from the cache
      *
      * @throws SystemOneException
      */
-    private function resolveManyCached(ResponseCache $cache, Decision $decision, array $contexts): array
+    private function resolveManyCached(ResponseCache $cache, Decision $decision, array $contexts, array $batches): array
     {
         $revisions = $this->revisions($cache);
 
         if ($revisions === null) {
-            return [$this->sendBatches($decision, $this->codec->encodeBatches($decision, $contexts, $this->model))[0], []];
+            return [$this->sendBatches($decision, $batches)[0], []];
         }
 
         $hits = [];
@@ -212,15 +217,21 @@ final readonly class DecisionClient implements Decider
         $sent = new ResultSet([], new Usage(0, 0));
 
         if ($missing !== []) {
-            [$sent, $entries] = $this->sendBatches($decision, $this->codec->encodeBatches($decision, array_column($missing, 'context'), $this->model));
+            // Each request's answers are stored as soon as they decode, so a later request that
+            // fails does not lose the ones already paid for: asking again sends only the rest.
+            foreach ($this->codec->encodeBatches($decision, array_column($missing, 'context'), $this->model) as $body) {
+                [$answered, $entries] = $this->sendBatches($decision, [$body]);
+                $stored = count($sent);
+                $sent = $sent->concat($answered);
 
-            // decodeBatch() checked there is one result, and so one entry, per context sent.
-            array_map(
-                fn (array $miss, Response $entry, int $index) => $this->store($cache, $revisions, $miss['key'], $sent[$index], $entry),
-                $missing,
-                $entries,
-                array_keys($missing),
-            );
+                // decodeBatch() checked there is one result, and so one entry, per context sent.
+                array_map(
+                    fn (array $miss, Response $entry, int $index) => $this->store($cache, $revisions, $miss['key'], $answered[$index], $entry),
+                    array_slice($missing, $stored, count($entries)),
+                    $entries,
+                    array_keys($entries),
+                );
+            }
         }
 
         // The misses' results come back in the order they were sent: the order of the contexts.
