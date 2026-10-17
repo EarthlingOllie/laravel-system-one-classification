@@ -212,3 +212,24 @@ it('leaves caching off without ?cache=1', function (): void {
 
     Http::assertSentCount(2);
 });
+
+// Review finding: the query string's settings are for its own request only; an app serving
+// several (Octane, a test) must not carry them into the next one.
+it('turns ?cache=1 and ?include_context=1 off again for the next request', function (): void {
+    config(['system-one.cache.store' => 'array']);
+    Http::fake([
+        '*/health' => Http::response(['revisions' => ['english' => 'rev-a']]),
+        '*/v1/systemone' => Http::response(['answers' => ['churn' => ['type' => 'noul', 'noul' => 0.7]], 'routing' => ['model' => 'english']]),
+    ]);
+
+    $this->get('/decide?cache=1&include_context=1')->assertOk()->assertSee('data-has-context="yes"', escape: false);
+    $this->get('/decide')
+        ->assertOk()
+        ->assertSee('data-cache="off"', escape: false)
+        ->assertSee('data-cached="no"', escape: false)
+        ->assertSee('data-has-context="no"', escape: false);
+
+    expect(Http::recorded(fn (Request $request): bool => str_ends_with($request->url(), '/v1/systemone')))->toHaveCount(2)
+        ->and(config('system-one.cache.enabled'))->toBeFalse()
+        ->and(config('system-one.events.include_context'))->toBeFalse();
+});

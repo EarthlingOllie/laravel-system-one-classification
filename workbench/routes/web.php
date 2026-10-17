@@ -21,6 +21,7 @@ use EarthlingOllie\SystemOneClassification\Result\Answer\Answer;
 use EarthlingOllie\SystemOneClassification\Result\Meta;
 use EarthlingOllie\SystemOneClassification\Transport\Redactor;
 use Illuminate\Foundation\Application;
+use Illuminate\Foundation\Http\Events\RequestHandled;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Event;
@@ -108,10 +109,15 @@ $decision = static function (string $text, ?string $model, Request $request): De
 /*
  * ?cache=1 turns the result cache on for this request (the `file` store unless
  * SYSTEM_ONE_CACHE_STORE names one), ?include_context=1 puts the text in the events. Returns
- * whether the cache is on.
+ * whether the cache is on. Both are for this request only: the settings they replace are kept
+ * on the request, and put back once it is handled.
  */
 $settings = static function (Request $request): bool {
     $cache = $request->query('cache') === '1';
+    $request->attributes->set('workbench.replaced-config', [
+        'system-one.cache' => config('system-one.cache'),
+        'system-one.events.include_context' => config('system-one.events.include_context'),
+    ]);
 
     if ($cache) {
         config(['system-one.cache' => ['enabled' => true, 'store' => config('system-one.cache.store') ?? 'file', 'ttl' => 300]]);
@@ -123,6 +129,16 @@ $settings = static function (Request $request): bool {
 
     return $cache;
 };
+
+/* One listener, registered once when the routes load, puts the replaced settings back. */
+Event::listen(RequestHandled::class, function (RequestHandled $handled): void {
+    /** @var array<string, mixed>|null $replaced what $settings set aside */
+    $replaced = $handled->request->attributes->get('workbench.replaced-config');
+
+    if ($replaced !== null) {
+        config($replaced);
+    }
+});
 
 /* An answer's abstention, as data attributes and a definition list entry (#7). */
 $abstention = static function (Answer $answer): array {
