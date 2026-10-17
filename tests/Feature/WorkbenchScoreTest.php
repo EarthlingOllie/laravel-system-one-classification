@@ -19,11 +19,11 @@ function urgencyResponse(array $overrides = []): array
 {
     return ['answers' => ['urgency' => [
         'type' => 'score',
-        'score' => 2.6389,
+        'score' => 2.1875,
         'legend' => ['0' => 'can wait', '1' => 'soon', '2' => 'today', '3' => 'blocking'],
-        'probabilities' => ['0' => 0.0099, '1' => 0.0713, '2' => 0.536, '3' => 0.3828],
+        'probabilities' => ['0' => 0.0625, '1' => 0.0625, '2' => 0.5, '3' => 0.375],
         'confidence' => 0.3043,
-        'answer_confidence' => 0.536,
+        'answer_confidence' => 0.5,
         ...$overrides,
     ]]];
 }
@@ -34,13 +34,13 @@ it('renders the most likely level, the expected level, both confidences and the 
     $this->get('/score?text='.urlencode('The site is down.'))
         ->assertOk()
         ->assertSee('data-value="High"', escape: false)
-        ->assertSee('data-expected="2.6389"', escape: false)
-        ->assertSee('data-answer-confidence="0.536"', escape: false)
+        ->assertSee('data-expected="2.1875"', escape: false)
+        ->assertSee('data-answer-confidence="0.5"', escape: false)
         ->assertSee('data-confidence="0.3043"', escape: false)
         ->assertSee('data-profile="laya"', escape: false)
         ->assertSee('data-confident="no"', escape: false)
         ->assertSeeInOrder(['data-case="Low"', 'data-case="Medium"', 'data-case="High"', 'data-case="Critical"'], escape: false)
-        ->assertSee('data-level="3" data-probability="0.3828"', escape: false)
+        ->assertSee('data-level="3" data-probability="0.375"', escape: false)
         ->assertSee('The site is down.');
 
     // The levels go out as a list of descriptions, lowest backing value first.

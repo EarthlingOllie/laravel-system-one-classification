@@ -56,11 +56,11 @@ function urgencyAnswer(array $overrides = []): array
 {
     return [
         'type' => 'score',
-        'score' => 2.6389,
+        'score' => 2.1875,
         'legend' => ['0' => 'can wait', '1' => 'soon', '2' => 'today', '3' => 'blocking'],
-        'probabilities' => ['0' => 0.0099, '1' => 0.0713, '2' => 0.536, '3' => 0.3828],
+        'probabilities' => ['0' => 0.0625, '1' => 0.0625, '2' => 0.5, '3' => 0.375],
         'confidence' => 0.3043,
-        'answer_confidence' => 0.536,
+        'answer_confidence' => 0.5,
         ...$overrides,
     ];
 }
@@ -102,14 +102,14 @@ it('decodes the most likely level, the expected level, both confidences and the 
     $answer = decodeScore(urgencyQuestion(), urgencyAnswer());
 
     expect($answer->value)->toBe(Urgency::High)
-        ->and($answer->expected)->toBe(2.6389)
-        ->and($answer->answerConfidence)->toBe(0.536)
+        ->and($answer->expected)->toBe(2.1875)
+        ->and($answer->answerConfidence)->toBe(0.5)
         ->and($answer->confidence)->toEqual(new Confidence(0.3043, 'laya'))
         ->and($answer->distribution->entries())->toBe([
-            ['case' => Urgency::Low, 'probability' => 0.0099],
-            ['case' => Urgency::Medium, 'probability' => 0.0713],
-            ['case' => Urgency::High, 'probability' => 0.536],
-            ['case' => Urgency::Critical, 'probability' => 0.3828],
+            ['case' => Urgency::Low, 'probability' => 0.0625],
+            ['case' => Urgency::Medium, 'probability' => 0.0625],
+            ['case' => Urgency::High, 'probability' => 0.5],
+            ['case' => Urgency::Critical, 'probability' => 0.375],
         ]);
 });
 
@@ -120,7 +120,7 @@ it('tags the raw confidence with the profile the codec was built for', function 
 
 it('orders the distribution by level, whatever order the response lists them in', function (): void {
     $answer = decodeScore(urgencyQuestion(), urgencyAnswer([
-        'probabilities' => ['3' => 0.3828, '1' => 0.0713, '0' => 0.0099, '2' => 0.536],
+        'probabilities' => ['3' => 0.375, '1' => 0.0625, '0' => 0.0625, '2' => 0.5],
         'legend' => ['3' => 'blocking', '2' => 'today', '0' => 'can wait', '1' => 'soon'],
     ]));
 
@@ -139,22 +139,35 @@ it('maps the level indexes the server uses onto the backing values', function ()
         ]);
 });
 
-// The server's `score` is the expected level index (0 for the lowest level); between two
-// levels it is placed proportionally between their backing values.
-it('places the expected level on the backing values, between levels where it falls between them', function (float $score, float $expected): void {
-    expect(decodeScore(severityQuestion(), severityAnswer($score))->expected)->toBe($expected);
-})->with([
-    'the lowest level' => [0.0, 1.0],
-    'a quarter of the way to the next level' => [0.25, 2.0],
-    'just below the middle level' => [0.75, 4.0],
-    'the middle level' => [1.0, 5.0],
-    'half way between the upper two levels' => [1.5, 7.5],
-    'the highest level' => [2.0, 10.0],
-]);
+// Review finding 1: with unevenly spaced levels, placing the server's expected *index* on the
+// values is not the expected value. Half on Minor (1) and half on Critical (10) is 5.5.
+it('takes the expected level over the backing values, also when they are unevenly spaced', function (): void {
+    $answer = decodeScore(severityQuestion(), severityAnswer(1.0, [
+        'probabilities' => ['0' => 0.5, '1' => 0.0, '2' => 0.5],
+    ]));
 
-it('keeps the server\'s expected level as it is when the levels are 0..n-1', function (float $score): void {
-    expect(decodeScore(urgencyQuestion(), urgencyAnswer(['score' => $score]))->expected)->toBe($score);
-})->with([0.0, 0.5, 1.0, 2.6389, 3.0]);
+    expect($answer->expected)->toBe(5.5);
+});
+
+// Review finding 2: expected follows the distribution the answer carries, so the two never
+// contradict each other.
+it('takes the expected level from the probabilities, consistent with the distribution', function (): void {
+    $answer = decodeScore(urgencyQuestion(), urgencyAnswer([
+        'score' => 0.0,
+        'probabilities' => ['0' => 0.0, '1' => 0.0, '2' => 0.0, '3' => 1.0],
+    ]));
+
+    expect($answer->value)->toBe(Urgency::Critical)
+        ->and($answer->expected)->toBe(3.0);
+});
+
+// For levels backed by 0..n-1 the expected level is the server's own `score`, the expected
+// index, as laya computes it (sum of i * p_i).
+it('agrees with the server\'s score when the levels are backed by 0..n-1', function (): void {
+    $answer = decodeScore(urgencyQuestion(), urgencyAnswer());
+
+    expect($answer->expected)->toBe(urgencyAnswer()['score']);
+});
 
 it('takes the lowest of equally likely levels as the value, as the server\'s argmax does', function (): void {
     $answer = decodeScore(urgencyQuestion(), urgencyAnswer([
@@ -166,7 +179,7 @@ it('takes the lowest of equally likely levels as the value, as the server\'s arg
 });
 
 it('takes the probability of the most likely level as answerConfidence when the server sends none (Jev)', function (): void {
-    expect(decodeScore(urgencyQuestion(), urgencyAnswer(['answer_confidence' => null]))->answerConfidence)->toBe(0.536);
+    expect(decodeScore(urgencyQuestion(), urgencyAnswer(['answer_confidence' => null]))->answerConfidence)->toBe(0.5);
 });
 
 it('takes answer_confidence as sent, even where it differs from the probability (calibrated)', function (): void {
@@ -240,6 +253,10 @@ it('raises MalformedResponse for a score answer that does not match the protocol
     'a probability outside [0, 1]' => [
         ['probabilities' => ['0' => 0.0, '1' => 0.0, '2' => 0.0, '3' => 1.5]],
         "The answer for 'urgency' has a probability for '3' outside [0, 1]: 1.5.",
+    ],
+    'probabilities that are all 0' => [
+        ['probabilities' => ['0' => 0, '1' => 0.0, '2' => 0, '3' => 0.0]],
+        "The answer for 'urgency' gives no level a probability above 0.",
     ],
     'a probability for a level the enum does not have' => [
         ['probabilities' => ['0' => 0.1, '1' => 0.1, '2' => 0.4, '3' => 0.4, '4' => 0.0]],

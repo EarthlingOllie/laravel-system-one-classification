@@ -39,8 +39,6 @@ use function is_string;
 use function json_decode;
 use function json_encode;
 use function ksort;
-use function max;
-use function min;
 
 /**
  * Maps a Decision to the System One wire format (`POST /v1/systemone`, shared by laya-serve
@@ -272,6 +270,8 @@ final readonly class SystemOneCodec
 
         // The server knows the levels only by index, lowest first: criteria went out as a
         // list, and legend and probabilities come back keyed "0", "1", ... (int keys here).
+        // Its `score` is the expected index; ScoreAnswer takes the expected level over the
+        // backing values from the probabilities instead, so the score is only checked.
         $levels = $question->levels();
         $highestIndex = count($levels) - 1;
         $score = $answer['score'] ?? null;
@@ -294,47 +294,26 @@ final readonly class SystemOneCodec
 
         $distribution = self::distribution($key, $answer, $labelled, "levels of {$question->enum}", $body);
         $value = $levels[0]['case'];
+        $highest = 0.0;
 
         // The first of equally likely levels wins, as with the server's argmax.
         foreach ($distribution->entries() as ['case' => $case, 'probability' => $probability]) {
-            if ($probability > $distribution->probabilityOf($value)) {
+            if ($probability > $highest) {
                 $value = $case;
+                $highest = $probability;
             }
+        }
+
+        if ($highest === 0.0) {
+            throw MalformedResponse::because("The answer for '{$key}' gives no level a probability above 0.", $body);
         }
 
         return new ScoreAnswer(
             $value,
-            self::expectedLevel($levels, (float) $score),
-            self::answerConfidence($key, $answer, $distribution->probabilityOf($value), $body),
+            self::answerConfidence($key, $answer, $highest, $body),
             $this->confidence($key, $answer, $body),
             $distribution,
         );
-    }
-
-    /**
-     * The server's expected level index placed on the backing values: index i is level i's
-     * value, and a fraction between two indexes lies the same fraction between their values.
-     * For levels backed by 0..n-1 that is the index itself.
-     *
-     * Walked step by step from the lowest level: each step from level i - 1 to level i adds
-     * the part of it the score covers (none below it, all of it above it) times its width.
-     *
-     * @param  non-empty-list<array{case: BackedEnum, value: int, description: string}>  $levels
-     * @param  float  $score  between 0 and the highest index
-     */
-    private static function expectedLevel(array $levels, float $score): float
-    {
-        $expected = 0.0;
-        $previous = null;
-
-        foreach ($levels as $index => ['value' => $value]) {
-            // ($index - 1) first: subtracting a whole number from the score is exact, so levels
-            // backed by 0..n-1 give back the server's score unchanged.
-            $expected += $previous === null ? $value : max(0.0, min(1.0, $score - ($index - 1))) * ($value - $previous);
-            $previous = $value;
-        }
-
-        return $expected;
     }
 
     /**

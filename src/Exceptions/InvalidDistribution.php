@@ -20,9 +20,14 @@ final class InvalidDistribution extends InvalidArgumentException implements Syst
         return new self("A distribution must give every case of {$enum} exactly one probability.");
     }
 
-    public static function expectedOutsideLevels(float $expected, string $enum, int|string $lowest, int|string $highest): self
+    public static function notIntBacked(string $enum): self
     {
-        return new self("The expected level {$expected} is outside the levels of {$enum}, which run from {$lowest} to {$highest}.");
+        return new self("A score distribution must be over an int-backed enum, whose backing values are the levels; {$enum} is not one.");
+    }
+
+    public static function noProbability(string $enum): self
+    {
+        return new self("A score distribution over {$enum} must give some level a probability above 0.");
     }
 
     public static function unknownCase(BackedEnum $case, string $enum): self
