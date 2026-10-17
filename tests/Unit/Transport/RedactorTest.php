@@ -117,6 +117,10 @@ it('keeps the body JSON when masking a key splits a character of the text', func
     expect((new Redactor("\xA9"))->redactBody('{"detail":"café"}'))->toBe("{\"detail\":\"caf\u{FFFD}***\"}");
 });
 
+it('masks every string of a body that is a JSON list', function (): void {
+    expect((new Redactor('k3y'))->redactBody('["k3y", {"detail": "no k3y"}, [], 1]'))->toBe('["***",{"detail":"no ***"},[],1]');
+});
+
 it('masks a JSON string body and leaves other JSON scalars alone', function (string $body, string $redacted): void {
     expect((new Redactor('k3y'))->redactBody($body))->toBe($redacted);
 })->with([
