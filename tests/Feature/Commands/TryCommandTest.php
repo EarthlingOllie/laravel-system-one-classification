@@ -390,3 +390,21 @@ it('rounds a score\'s expected level in the JSON to 12 decimals', function (): v
 
     expect(json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR)['answers']['q1']['expected'])->toBe(1.888888888889);
 });
+
+// Review finding: encode() refuses some decisions only once decide() runs (profile limits, text
+// that is not UTF-8); those are input the command cannot use, so exit 2 with nothing sent.
+it('exits with 2 for a decision the connection refuses before sending', function (array $arguments, string $message): void {
+    Http::fake();
+    $command = new TryCommand;
+    $command->setLaravel(app());
+    $tester = new CommandTester($command);
+
+    $tester->execute(['text' => 'x', ...$arguments], ['interactive' => false, 'capture_stderr_separately' => true]);
+
+    expect($tester->getStatusCode())->toBe(Command::INVALID)
+        ->and($tester->getErrorOutput())->toContain($message);
+    Http::assertNothingSent();
+})->with([
+    'text that is not UTF-8' => [['text' => "caf\xE9", '--yes-no' => ['Cancel?']], 'The context text is not valid UTF-8'],
+    'a choice over more options than the profile allows' => [['--choice' => ['Workbench\\App\\Enums\\Topic:Which topic?']], "Choice question 'q1' has 101 options"],
+]);

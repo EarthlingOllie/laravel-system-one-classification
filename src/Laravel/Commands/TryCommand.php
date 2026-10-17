@@ -144,6 +144,11 @@ final class TryCommand extends Command
 
         try {
             $result = $client->decide($decision);
+        } catch (InvalidDecision $invalid) {
+            // Refused by the connection before sending: a profile limit, or text that is not UTF-8.
+            $this->problem($invalid->getMessage());
+
+            return self::INVALID;
         } catch (HostUnavailable|RejectedByModel|MalformedResponse $failed) {
             $this->problem($failed->getMessage());
 
