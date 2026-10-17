@@ -43,19 +43,6 @@ Route::get('/', function (Application $app): string {
         HTML;
 });
 
-/*
- * One yes/no question, end to end: SystemOne::decide() against the default connection
- * (SYSTEM_ONE_URL). A non-blank ?text= replaces the default ticket. A package exception is
- * rendered as an error page: 503 when the server is unreachable or down (HostUnavailable),
- * 502 when it refused the decision or answered nonsense (RejectedByModel,
- * MalformedResponse), 500 for this app's own mistakes (InvalidConfiguration and the rest).
- * Messages are shown as the package wrote them; HostUnavailable's are already redacted.
- *
- * Under `composer serve` the shell environment does not reach this app (Testbench turns
- * off putenv and the PHP built-in server fills neither $_ENV nor $_SERVER from it): to
- * use another server or a key, add SYSTEM_ONE_URL / SYSTEM_ONE_API_KEY to the `env:`
- * list in testbench.yaml.
- */
 /**
  * The status and HTML block both decision pages render for a package exception.
  *
@@ -80,6 +67,19 @@ $errorPage = static function (SystemOneException $exception): array {
         HTML];
 };
 
+/*
+ * One yes/no question, end to end: SystemOne::decide() against the default connection
+ * (SYSTEM_ONE_URL). A non-blank ?text= replaces the default ticket. A package exception is
+ * rendered as an error page: 503 when the server is unreachable or down (HostUnavailable),
+ * 502 when it refused the decision or answered nonsense (RejectedByModel,
+ * MalformedResponse), 500 for this app's own mistakes (InvalidConfiguration and the rest).
+ * Messages are shown as the package wrote them; HostUnavailable's are already redacted.
+ *
+ * Under `composer serve` the shell environment does not reach this app (Testbench turns
+ * off putenv and the PHP built-in server fills neither $_ENV nor $_SERVER from it): to
+ * use another server or a key, add SYSTEM_ONE_URL / SYSTEM_ONE_API_KEY to the `env:`
+ * list in testbench.yaml.
+ */
 Route::get('/decide', function (Request $request) use ($errorPage): Response {
     // A query string can make ?text= an array (?text[]=x), and Context::text() refuses blank
     // text: anything but a non-blank string gets the default ticket.
