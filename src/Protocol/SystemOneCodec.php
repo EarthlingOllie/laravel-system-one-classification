@@ -113,7 +113,6 @@ final readonly class SystemOneCodec
      */
     public function decode(Decision $decision, Response $response): Result
     {
-        $body = json_decode($response->body, true);
         $status = $response->status;
 
         if ($status >= 500) {
@@ -127,6 +126,9 @@ final readonly class SystemOneCodec
         if ($status < 200 || $status >= 300) {
             throw MalformedResponse::because("Unexpected HTTP status {$status}.", $response->body);
         }
+
+        // Only now: an error body is read by ErrorDetail.
+        $body = json_decode($response->body, true);
 
         if (! is_array($body) || array_is_list($body)) {
             throw MalformedResponse::because('The response is not a JSON object.', $response->body);

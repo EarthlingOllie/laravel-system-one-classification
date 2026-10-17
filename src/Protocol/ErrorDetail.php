@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace EarthlingOllie\SystemOneClassification\Protocol;
 
+use JsonException;
+
 use function array_filter;
 use function array_is_list;
 use function implode;
@@ -11,7 +13,6 @@ use function is_array;
 use function is_int;
 use function is_string;
 use function json_decode;
-use function json_validate;
 use function mb_strlen;
 use function mb_substr;
 use function preg_replace;
@@ -35,11 +36,11 @@ final readonly class ErrorDetail
     /** The message in the raw body, or null when it holds none. */
     public static function of(string $body): ?string
     {
-        if (! json_validate($body)) {
+        try {
+            $decoded = json_decode($body, true, flags: JSON_THROW_ON_ERROR);
+        } catch (JsonException) {
             return self::text($body);
         }
-
-        $decoded = json_decode($body, true);
 
         // A JSON string is the message itself, as plain text is.
         if (! is_array($decoded)) {

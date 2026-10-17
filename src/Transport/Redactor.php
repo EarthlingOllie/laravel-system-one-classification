@@ -9,7 +9,9 @@ use SensitiveParameter;
 use stdClass;
 
 use function array_filter;
+use function array_keys;
 use function array_map;
+use function array_values;
 use function get_object_vars;
 use function is_array;
 use function is_string;
@@ -50,6 +52,12 @@ final readonly class Redactor
 
     private const string BEARER = '~\b(bearer\s+)[^\s"\',;]+~i';
 
+    /** What redactBody() masks in what a server echoes: URL credentials. */
+    private const array URL_PATTERNS = [self::USERINFO => '$1'.self::MASK.'@', self::URL_QUERY_VALUE => self::MASK];
+
+    /** What redact() masks in the HTTP client's own text: URL credentials, secret pairs, bearer tokens. */
+    private const array PATTERNS = [...self::URL_PATTERNS, self::SECRET_PAIR => '$1='.self::MASK, self::BEARER => '$1'.self::MASK];
+
     /** @var list<string> longest first, so a secret that contains another is masked whole */
     private array $secrets;
 
@@ -79,11 +87,7 @@ final readonly class Redactor
     /** The text with every credential masked; all of it masked if a pattern fails to run. */
     public function redact(string $text): string
     {
-        return preg_replace(
-            [self::USERINFO, self::URL_QUERY_VALUE, self::SECRET_PAIR, self::BEARER],
-            ['$1'.self::MASK.'@', self::MASK, '$1='.self::MASK, '$1'.self::MASK],
-            str_replace($this->secrets, self::MASK, $text),
-        ) ?? self::MASK;
+        return $this->mask($text, self::PATTERNS);
     }
 
     /**
@@ -111,11 +115,17 @@ final readonly class Redactor
     /** The text with the secrets and URL credentials masked; all of it if a pattern fails to run. */
     private function redactEchoed(string $text): string
     {
-        return preg_replace(
-            [self::USERINFO, self::URL_QUERY_VALUE],
-            ['$1'.self::MASK.'@', self::MASK],
-            str_replace($this->secrets, self::MASK, $text),
-        ) ?? self::MASK;
+        return $this->mask($text, self::URL_PATTERNS);
+    }
+
+    /**
+     * The text with the secrets and then each pattern's matches replaced.
+     *
+     * @param  array<string, string>  $patterns  replacement by pattern
+     */
+    private function mask(string $text, array $patterns): string
+    {
+        return preg_replace(array_keys($patterns), array_values($patterns), str_replace($this->secrets, self::MASK, $text)) ?? self::MASK;
     }
 
     private function redactStrings(mixed $value): mixed
