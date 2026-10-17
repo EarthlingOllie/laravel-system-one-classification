@@ -72,12 +72,7 @@ final class SystemOneFake implements ConnectionResolver, Fake
     /** @throws InvalidConfiguration when the connection is not configured */
     public function connection(?string $name = null): FakeConnection
     {
-        $name ??= $this->config->get('system-one.default');
-
-        if (! is_string($name)) {
-            throw InvalidConfiguration::noDefaultConnection();
-        }
-
+        $name ??= $this->manager->defaultConnection();
         // The real manager checks the connection (building its client connects to nothing), so a
         // config the real client refuses is refused here too, by the same rules.
         $this->manager->connection($name);

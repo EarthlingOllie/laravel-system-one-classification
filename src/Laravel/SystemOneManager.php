@@ -92,7 +92,12 @@ final readonly class SystemOneManager implements ConnectionResolver
         return $this->connection()->decide($decision);
     }
 
-    private function defaultConnection(): string
+    /**
+     * The name of the connection decide() uses (`system-one.default`).
+     *
+     * @throws InvalidConfiguration when it is not set
+     */
+    public function defaultConnection(): string
     {
         $name = $this->config->get('system-one.default');
 
