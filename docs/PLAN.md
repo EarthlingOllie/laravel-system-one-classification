@@ -451,13 +451,28 @@ How the typing works:
     connection is sent again up to `retries` times, waiting `retry_delay` ms
     (default 200) doubled before each further retry, at most 30 s. A 4xx never
     is. The shipped config retries twice (200 ms locally, 500 ms remote); a
-    connection that sets no `retries` retries nothing. The waits go through
-    `Illuminate\Support\Sleep` (`Laravel\LaravelSleeper`), faked in every
-    Feature test.
+    connection that sets no `retries` retries nothing, and none may set more
+    than 10. A 5xx's `Retry-After` (seconds) wins over a shorter backoff,
+    within the same cap. Timeouts are retried too (the issue asks for transport
+    failures to be), so a slow host may answer, and bill, one decision twice;
+    the config says so. The waits go through `Illuminate\Support\Sleep`
+    (`Laravel\LaravelSleeper`), faked in every Feature test.
   - The API key goes out only as the bearer token. `HttpTransport` and
     `Laravel\ConnectionConfig` hold it as a `SensitiveParameterValue` behind a
     `#[SensitiveParameter]`, so dumps, `var_export()`, `json_encode()` and stack
-    traces never show it, and `serialize()` refuses it.
+    traces never show it, and `serialize()` refuses it. Requests go through
+    `Laravel\QuietHttpFactory`, the app's HTTP factory without its event
+    dispatcher, so Laravel's `RequestSending`, `ResponseReceived` and
+    `ConnectionFailed` (which carry the Authorization header) are not
+    dispatched for them; `Http::fake()` and the app's global middleware still
+    apply, but Telescope and Pulse do not see these requests. Error bodies are
+    masked of the key and echoed URL credentials before anything reads them.
+  - `remote` is opt-in: a connection added without it gets neither check. It
+    cannot be inferred from the URL, since a Sail app reaches its own
+    laya-serve with a key over `http://laya:8000`.
+  - An app that published `config/system-one.php` before #9 keeps its own
+    `connections` (`mergeConfigFrom` merges top-level keys only): republish it,
+    or copy the `laya-hosted` and `jev` blocks in, to get them.
   - `SystemOneManager::configuration($name)` returns the checked
     `ConnectionConfig` without requiring the key: what the testing fake (#10)
     should check, so that faking a remote connection needs no real key.
