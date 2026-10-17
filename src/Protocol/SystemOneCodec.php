@@ -40,6 +40,7 @@ use function array_filter;
 use function array_is_list;
 use function array_keys;
 use function array_map;
+use function array_values;
 use function count;
 use function get_object_vars;
 use function implode;
@@ -277,6 +278,25 @@ final readonly class SystemOneCodec
         ksort($decoded, SORT_STRING);
 
         return $decoded;
+    }
+
+    /**
+     * Each result of a batch response, as the single-call response decide() would have got for
+     * its state: what DecisionClient caches, so a batch and decide() share cache entries. Read
+     * only a response decodeBatch() accepted; anything else has no entries.
+     *
+     * @return list<Response>
+     */
+    public function batchEntries(Response $response): array
+    {
+        // Decoded to objects, so `{}` and keys "0", "1", ... encode back exactly as sent.
+        $root = json_decode($response->body);
+        $results = $root instanceof stdClass ? ($root->results ?? null) : null;
+
+        return array_map(
+            static fn (mixed $entry): Response => new Response($response->status, json_encode($entry, JSON_THROW_ON_ERROR)),
+            is_array($results) ? array_values($results) : [],
+        );
     }
 
     /**

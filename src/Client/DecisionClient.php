@@ -18,10 +18,15 @@ use EarthlingOllie\SystemOneClassification\Result\Usage;
 use EarthlingOllie\SystemOneClassification\Transport\Response;
 use EarthlingOllie\SystemOneClassification\Transport\Transport;
 
+use function array_column;
+use function array_is_list;
 use function array_key_exists;
+use function array_map;
+use function array_values;
 use function count;
 use function hash;
 use function in_array;
+use function ksort;
 use function serialize;
 
 /** Sends decisions to one host and returns typed results. One client per connection. */
@@ -81,6 +86,14 @@ final readonly class DecisionClient implements Decider
      * encoded before the first is sent. If a request fails, its exception is raised and no later
      * request is sent.
      *
+     * Each context counts as one decision, as the testing fake records it: the observer is told
+     * about each (made, or failed with the batch's exception; a batch refused before it has
+     * contexts to ask about fails once, as the decision itself). With a cache, the server's
+     * revisions are read once, each context is keyed exactly as decide() keys it (a batch body
+     * is decide()'s with `state` swapped for `states`), so both share entries; only the misses
+     * are sent, and each answer is stored as decide() stores its response. The set's usage
+     * counts the requests sent, so a batch answered from the cache alone used none.
+     *
      * @param  list<Context>  $contexts
      *
      * @throws InvalidDecision before anything is sent: no contexts, not a list of Context, or a
@@ -91,14 +104,118 @@ final readonly class DecisionClient implements Decider
      */
     public function decideMany(array $contexts, Decision $decision): ResultSet
     {
-        $results = new ResultSet([], new Usage(0, 0));
+        try {
+            $batches = $this->codec->encodeBatches($decision, $contexts, $this->model);
+            [$results, $cached] = $this->cache === null
+                ? [$this->sendBatches($decision, $batches)[0], []]
+                : $this->resolveManyCached($this->cache, $decision, $contexts);
+        } catch (SystemOneException $exception) {
+            foreach (self::asked($contexts, $decision) as $asked) {
+                $this->observer?->failed($asked, $exception);
+            }
 
-        foreach ($this->codec->encodeBatches($decision, $contexts, $this->model) as $body) {
-            $response = $this->transport->post(SystemOneCodec::BATCH_PATH, $body);
-            $results = $results->concat($this->codec->decodeBatch($decision, count($body['states']), $response));
+            throw $exception;
+        }
+
+        foreach (self::asked($contexts, $decision) as $position => $asked) {
+            $this->observer?->decided($asked, $results[$position], $cached[$position] ?? false);
         }
 
         return $results;
+    }
+
+    /**
+     * The decision asked about each context, or, for contexts encodeBatches() refused as a
+     * batch (none, or not a list of Context), the decision itself.
+     *
+     * @param  array<mixed>  $contexts
+     * @return non-empty-list<Decision>
+     */
+    private static function asked(array $contexts, Decision $decision): array
+    {
+        $asked = [];
+
+        foreach ($contexts as $context) {
+            if (! $context instanceof Context) {
+                return [$decision];
+            }
+
+            $asked[] = $decision->withContext($context);
+        }
+
+        return $asked === [] || ! array_is_list($contexts) ? [$decision] : $asked;
+    }
+
+    /**
+     * Sends the batch requests, one after another.
+     *
+     * @param  non-empty-list<array{states: non-empty-list<string|array<string, mixed>>, questions: array<string, array<string, mixed>>}>  $batches
+     * @return array{ResultSet, list<Response>} the results, and each one's single-call response
+     *
+     * @throws SystemOneException
+     */
+    private function sendBatches(Decision $decision, array $batches): array
+    {
+        $results = new ResultSet([], new Usage(0, 0));
+        $entries = [];
+
+        foreach ($batches as $body) {
+            $response = $this->transport->post(SystemOneCodec::BATCH_PATH, $body);
+            $results = $results->concat($this->codec->decodeBatch($decision, count($body['states']), $response));
+            $entries = [...$entries, ...($this->cache === null ? [] : $this->codec->batchEntries($response))];
+        }
+
+        return [$results, $entries];
+    }
+
+    /**
+     * @param  list<Context>  $contexts  as encodeBatches() accepted them
+     * @return array{ResultSet, array<int, bool>} the results, and for each position whether it came from the cache
+     *
+     * @throws SystemOneException
+     */
+    private function resolveManyCached(ResponseCache $cache, Decision $decision, array $contexts): array
+    {
+        $revisions = $this->revisions($cache);
+
+        if ($revisions === null) {
+            return [$this->sendBatches($decision, $this->codec->encodeBatches($decision, $contexts, $this->model))[0], []];
+        }
+
+        $results = [];
+        $cached = [];
+        $missing = [];
+
+        foreach ($contexts as $position => $context) {
+            $asked = $decision->withContext($context);
+            $key = self::key($revisions, $this->codec->encode($asked, $this->model));
+            $hit = $this->hit($cache, $asked, $key);
+            $cached[$position] = $hit !== null;
+
+            if ($hit === null) {
+                $missing[] = ['index' => count($missing), 'position' => $position, 'context' => $context, 'key' => $key];
+            } else {
+                $results[$position] = $hit;
+            }
+        }
+
+        $usage = new Usage(0, 0);
+
+        if ($missing !== []) {
+            [$sent, $entries] = $this->sendBatches($decision, $this->codec->encodeBatches($decision, array_column($missing, 'context'), $this->model));
+            $usage = $sent->usage;
+
+            // decodeBatch() checked there is one result, and so one entry, per context sent.
+            array_map(function (array $miss, Response $entry) use (&$results, $sent, $cache, $revisions): void {
+                $result = $sent[$miss['index']];
+                $results[$miss['position']] = $result;
+                $this->store($cache, $revisions, $miss['key'], $result, $entry);
+            }, $missing, $entries);
+        }
+
+        ksort($results);
+
+        return [new ResultSet(array_values($results), $usage), $cached];
     }
 
     /**
@@ -131,28 +248,60 @@ final readonly class DecisionClient implements Decider
             return [$this->send($decision, $body)[0], false];
         }
 
-        // serialize(), not json_encode(): it takes any bytes, so the key never fails a decision,
-        // and it keeps every value exactly (floats round-trip, strings byte for byte).
-        $key = hash('sha256', serialize(['revisions' => $revisions, 'request' => $body]));
-        $hit = $cache->get($key);
+        $key = self::key($revisions, $body);
+        $hit = $this->hit($cache, $decision, $key);
 
         if ($hit !== null) {
-            try {
-                return [$this->codec->decode($decision, $hit), true];
-            } catch (SystemOneException $unreadable) {
-                $cache->skipped($unreadable);
-            }
+            return [$hit, true];
         }
 
         [$result, $response] = $this->send($decision, $body);
+        $this->store($cache, $revisions, $key, $result, $response);
 
-        // Kept only when the checkpoint that answered is one the key holds a revision for: a server
-        // that loads checkpoints lazily may route to one it had not loaded when /health was read.
+        return [$result, false];
+    }
+
+    /**
+     * @param  non-empty-array<array-key, string>  $revisions
+     * @param  array<string, mixed>  $body  the encoded single-call request
+     */
+    private static function key(array $revisions, array $body): string
+    {
+        // serialize(), not json_encode(): it takes any bytes, so the key never fails a decision,
+        // and it keeps every value exactly (floats round-trip, strings byte for byte).
+        return hash('sha256', serialize(['revisions' => $revisions, 'request' => $body]));
+    }
+
+    /** The cached result for the key, or null on a miss or an entry that does not decode (reported). */
+    private function hit(ResponseCache $cache, Decision $decision, string $key): ?Result
+    {
+        $hit = $cache->get($key);
+
+        if ($hit === null) {
+            return null;
+        }
+
+        try {
+            return $this->codec->decode($decision, $hit);
+        } catch (SystemOneException $unreadable) {
+            $cache->skipped($unreadable);
+
+            return null;
+        }
+    }
+
+    /**
+     * Keeps the response only when the checkpoint that answered is one the key holds a revision
+     * for: a server that loads checkpoints lazily may route to one it had not loaded when
+     * /health was read.
+     *
+     * @param  non-empty-array<array-key, string>  $revisions
+     */
+    private function store(ResponseCache $cache, array $revisions, string $key, Result $result, Response $response): void
+    {
         if (array_key_exists($result->meta->checkpoint ?? '', $revisions)) {
             $cache->put($key, $response);
         }
-
-        return [$result, false];
     }
 
     /**

@@ -583,6 +583,17 @@ How the typing works:
   - Each connection may set `model` (`SYSTEM_ONE_MODEL`); on the integration
     branch this is #9's key: sent when a decision pins none, a pin
     (`withModel()`, #6) wins, and it is held to the profile.
+  - Batches (integration branch): `decideMany()` treats each context as one
+    decision, as the fake does. The observer gets a `DecisionMade` per context
+    (its own context, result and `cached`), or, when the batch fails, a
+    `DecisionFailed` per context with the batch's exception (one, for the
+    decision itself, when the batch is refused before it has contexts). With the
+    cache on, /health is read once per batch and each context is keyed exactly as
+    `decide()` keys it (a batch body is `decide()`'s with `state` swapped for
+    `states`), so the two share entries; only misses are sent, as batches, and
+    each result is stored as the single-call body `decide()` would have got
+    (`SystemOneCodec::batchEntries()`). The set's `usage` counts the requests
+    sent, so a batch answered from the cache alone reports zero tokens.
   - The miss tests cover each part of the key the codec sends, a choice's
     options and their descriptions (#4) and a pinned model (#6) included.
 - Artisan commands:

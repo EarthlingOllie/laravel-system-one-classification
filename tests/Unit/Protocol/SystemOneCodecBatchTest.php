@@ -217,3 +217,18 @@ it('accepts zero token counts', function (): void {
 
     expect($set->usage)->toEqual(new Usage(0, 0));
 });
+
+it('gives each batch result as the single-call response decide() would have got, exactly as sent', function (): void {
+    $body = '{"results": [{"answers": {"s": {"type": "score", "probabilities": {"0": 0.5, "1": 0.5}}}, "routing": {}}, {"answers": {"churn": {"type": "noul", "noul": 0.25}}}], "total_usage": null}';
+
+    $entries = (new SystemOneCodec)->batchEntries(new Response(200, $body));
+
+    expect($entries)->toEqual([
+        new Response(200, '{"answers":{"s":{"type":"score","probabilities":{"0":0.5,"1":0.5}}},"routing":{}}'),
+        new Response(200, '{"answers":{"churn":{"type":"noul","noul":0.25}}}'),
+    ]);
+});
+
+it('gives no batch entries for a body that has no results list', function (string $body): void {
+    expect((new SystemOneCodec)->batchEntries(new Response(200, $body)))->toBe([]);
+})->with(['not JSON' => ['<html>'], 'no results' => ['{"total_usage": null}'], 'results an object' => ['{"results": {"a": {}}}']]);
