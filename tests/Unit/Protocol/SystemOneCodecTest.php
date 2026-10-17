@@ -53,6 +53,24 @@ it('sends the pinned model, and no model field when none is pinned', function ()
     ])->and((new SystemOneCodec)->encode(churnDecision()))->not->toHaveKey('model');
 });
 
+it("sends the connection's default model when the decision pins none", function (): void {
+    expect((new SystemOneCodec)->encode(churnDecision(), 'multilingual'))->toBe([
+        'state' => 'We will cancel.',
+        'model' => 'multilingual',
+        'questions' => ['churn' => ['type' => 'noul', 'instructions' => 'Does the customer threaten to cancel?']],
+    ]);
+});
+
+it("lets the decision's pinned model win over the connection's default", function (): void {
+    expect((new SystemOneCodec)->encode(churnDecision()->withModel('english'), 'multilingual')['model'])->toBe('english');
+});
+
+it('holds the default model to the profile, as a pinned one', function (): void {
+    expect(fn () => (new SystemOneCodec(new JevProfile))->encode(churnDecision(), 'jev-1'))
+        ->toThrow(InvalidDecision::class, "The decision pins model 'jev-1', but the jev profile accepts no model values")
+        ->and((new SystemOneCodec(new JevProfile(['jev-1'])))->encode(churnDecision(), 'jev-1')['model'])->toBe('jev-1');
+});
+
 // JSON carries only UTF-8: such text would fail in the HTTP client's json_encode() instead.
 it('refuses context text that is not valid UTF-8', function (): void {
     $decision = Decision::about(Context::text("Billed tw\xB1ce"))->ask(Question::yesNo('churn', 'Cancel?'));
