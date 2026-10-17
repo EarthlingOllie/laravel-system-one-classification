@@ -272,9 +272,11 @@ final readonly class SystemOneCodec
 
     /**
      * The part of a body that json_encode() refused, as a message names it, and why: the state,
-     * a question by its key, or else the pinned model, the only other text in it.
+     * a question by its key, a language code or hint (#7), or else the pinned model, the only
+     * other text in it. (Fields contexts are checked when built, and the other request
+     * controls are numbers.)
      *
-     * @param  array{state: string|array<string, mixed>, model?: string, questions: array<string, array<string, mixed>>}  $body
+     * @param  array{state: string|array<string, mixed>, model?: string, lang?: string, lang_guess?: string, questions: array<string, array<string, mixed>>}  $body
      * @return array{string, ?JsonException}
      */
     private static function notUtf8(array $body): array
@@ -290,6 +292,14 @@ final readonly class SystemOneCodec
 
             if ($error !== null) {
                 return ["The text of question '{$key}'", $error];
+            }
+        }
+
+        foreach (['lang' => 'The language code', 'lang_guess' => 'The language hint'] as $control => $part) {
+            $error = self::jsonError($body[$control] ?? null);
+
+            if ($error !== null) {
+                return [$part, $error];
             }
         }
 

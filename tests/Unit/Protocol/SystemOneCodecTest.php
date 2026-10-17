@@ -98,6 +98,23 @@ it('refuses a pinned model that is not valid UTF-8', function (): void {
         ->toThrow(InvalidDecision::class, 'The pinned model is not valid UTF-8, which JSON requires.');
 });
 
+// #7's language codes are text in the body too, so a code that is not UTF-8 is named as such.
+it('refuses a language code or hint that is not valid UTF-8, naming it', function (Closure $control, string $message): void {
+    $refused = null;
+
+    try {
+        (new SystemOneCodec)->encode($control(churnDecision()));
+    } catch (InvalidDecision $exception) {
+        $refused = $exception;
+    }
+
+    expect($refused?->getMessage())->toBe($message)
+        ->and($refused?->getPrevious())->toBeInstanceOf(JsonException::class);
+})->with([
+    'language' => [fn (Decision $decision): Decision => $decision->withLanguage("d\xB1"), 'The language code is not valid UTF-8, which JSON requires.'],
+    'language hint' => [fn (Decision $decision): Decision => $decision->withLanguageHint("d\xB1"), 'The language hint is not valid UTF-8, which JSON requires.'],
+]);
+
 it('keeps the JSON error as the cause of a UTF-8 refusal', function (): void {
     try {
         (new SystemOneCodec)->encode(Decision::about(Context::text("\xB1"))->ask(Question::yesNo('churn', 'Cancel?')));
