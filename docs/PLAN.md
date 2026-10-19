@@ -22,6 +22,44 @@ A typed Laravel client for System 1 decision models (Laya, Jev and compatible mo
 | 14 | Caching and data | Caching is off by default. Context text is never logged or put in events by default. Remote connections (`laya-hosted`, `jev`) are used only when they are configured explicitly with a key; the default connection is always `local`. |
 | 15 | Quality | All code is immutable and fully tested, as defined in the Quality bar section below. |
 
+## What was built, and where it differs from this plan
+
+Every ticket (#1 to #13) is built and combined on `claude/integration`. The
+[README](../README.md) documents the package as built, and its snippets are tested against the
+code (`tests/Docs/ReadmeTest.php`); [`examples/`](../examples) holds a runnable script per main
+use case, all run in CI. The rest of this document is the plan, with "As built" notes per
+ticket. The places where the build differs from the plan, collected from those notes and the
+ticket PRs:
+
+| Area | The plan | As built | Ticket |
+|---|---|---|---|
+| Question types | `ChoiceQuestion<TEnum>` extends a generic `Question<TAnswer>` | `Question` is a static factory; the generic type is `Question\QuestionHandle<TAnswer>`, and `Result::get(QuestionHandle<TAnswer>): TAnswer`. Handles compare by value (`HandleIdentity`), case descriptions included. | #3, #4 |
+| Context | `Context::text()` or `Context::fields()` | Both, held in `Context::$state` (text or fields), not `$text`. Fields must be plain JSON data and are copied, so a PHP reference cannot change them. | #7 |
+| Abstention | A boolean `abstained` (decision 10) | `abstained`, plus a four-state `Result\Abstention` (`NotRequested`, `Passed`, `Abstained`, `Unevaluated`) and `abstentionThreshold`. `min_confidence` is one float; laya-serve's per-bucket map is not supported. | #7 |
+| Score `expected` | Read from the server | Computed by `ScoreAnswer` as the mean backing value under the distribution. The server's `score` is the expected level *index*, the same number only for levels backed by 0..n-1, so it is checked but not read. | #5 |
+| Model profiles | Option and level limits | The choice option cap, required score descriptions and the accepted model names. Laya's other 413 limits (64 questions, 32 levels, 512 options across questions, 50,000 characters) are left to the server, as Jev's values for them are unknown. Jev's model names are not built in: a Jev connection lists them in `models`. | #6 |
+| Facade and fake | `SystemOne::fake()` behind the facade | The facade's accessor is the `Laravel\ConnectionResolver` interface, and `connection()` returns a `Client\Decider`. App code must inject `ConnectionResolver` to be faked: the final `SystemOneManager` always stays the real one. `health()` is on `DecisionClient` only, not on `Decider`. The fake answers decisions itself, not through a fake `Transport`. | #10 |
+| Remote hosts | Used only when configured with a key | A `remote` flag (opt-in, as a Sail app reaches its own server over plain http) requires a key and https. The fake skips the key check, as it sends nothing. | #9 |
+| Retries | 5xx and transport failures | Timeouts are retried too, so a slow host may answer, and bill, one decision twice; the config says so. `Retry-After` wins over a shorter backoff. | #9 |
+| HTTP | Laravel's HTTP client | Requests go through `QuietHttpFactory`, which dispatches none of Laravel's HTTP client events (they carry the Authorization header), so Telescope and Pulse don't see them. | #9 |
+| Cache key | The decision, the model and the checkpoint revision | A SHA-256 of the revisions on `/health`, the whole encoded request body and the connection. `/health` is read before every cached decision, hits included, rather than memoised. A host without `/health` (Jev) is never cached and reports the failed read on every decision. | #12 |
+| Events | `DecisionMade` and `DecisionFailed` | Also dispatched for decisions refused before sending, and one per context for batches. | #12, integration |
+| Batches | `decideMany()` on the batch endpoint | It takes a `Decision` for its questions and controls and ignores its context. Requests are split by 64 states and by laya-serve's 2 MiB body limit. A batch succeeds or fails as a whole for the caller; with the cache on, answers already received are stored. | #8, integration |
+| Commands | `install`, `health`, `try` | `try --choice`/`--score` name an enum of the app (`--choice="App\Enums\Department:Which department?"`), and print the routing. `try` decides through `ConnectionResolver`, so the fake answers it; `health` always probes the real server. | #11, integration |
+| Local server | `composer laya:up` | That script is the package repo's. An app uses the `compose.system-one.yaml` (or Sail service) that `system-one:install` writes, with `docker compose -f compose.system-one.yaml up -d --wait`; Compose reads its `LAYA_*` settings from the app's `.env`. | #2, #11, #13 |
+| Docs and examples | "docs and examples" (Phase 5) | The README, and one example script per main use case. The scripts boot the Laravel app in the current directory, or Testbench's skeleton from a clone. A new `Docs` suite, in the default run, checks the README's snippets, commands, options, env vars and enums against the code and runs the fake example with no server; the Integration suite runs the other examples against the Laya container. PHPStan analyses `examples/` at max level. | #13 |
+
+Still open:
+
+- **Phase 0:** the model-backed fixtures (choice, score, noul, multiple questions, batch, below
+  `min_confidence`) are provisional, recorded with random weights; Jev's OpenAPI document has
+  not been fetched (the contract tests use a marked stand-in); latency and RAM are not measured
+  on Apple Silicon. Each was blocked by the recording environment's network.
+- **Phase 6:** `tests/Smoke` reaches the real `laya-hosted` and `jev` APIs, but has not been run
+  with real keys.
+- Queued and concurrent dispatch, and attribute-driven decision classes, are later work
+  (decisions 11 and 13).
+
 ## Goal
 
 A Laravel package that gives PHP code a fully typed, immutable way to ask System 1
@@ -698,21 +736,31 @@ bin/
 
 ### Package layout
 
+As built:
+
 ```
 src/
-  Domain/        Context, Decision, Question (factory), Question/{QuestionHandle,QuestionKey,
-                 Choice,Score,YesNoQuestion}, Describe attribute
-  Result/        Result, ResultSet, Answer/{Answer,Choice,Score,YesNoAnswer}, Distribution, Verdict, Meta
+  Domain/        Context, Decision, Question (factory), Describe attribute, DescribesCases,
+                 Question/{QuestionHandle,QuestionKey,Instructions,CaseDescription,HandleIdentity,
+                 ChoiceQuestion,ScoreQuestion,YesNoQuestion}
+  Result/        Result, ResultSet, Answer/{Answer,ChoiceAnswer,ScoreAnswer,YesNoAnswer}, Abstention,
+                 Confidence, Distribution, Probability, Verdict, Meta, Usage, Health
   Model/         ModelProfile, LayaProfile, JevProfile, ProfileLimits
-  Protocol/      SystemOneCodec (request/response mapping)
-  Transport/     Transport, HttpTransport, Response, Redactor
-  Client/        Decider (interface), DecisionClient (one per connection)
-  Laravel/       SystemOneServiceProvider, SystemOneManager, ConnectionResolver, Facades/SystemOne,
-                 Commands/*, Events/*, Testing/{SystemOneFake,FakeConnection,FakeAnswer}
+  Protocol/      SystemOneCodec (request/response mapping), ErrorDetail
+  Transport/     Transport, HttpTransport, Response, Redactor, RetryPolicy, Sleeper, SystemSleeper
+  Client/        Decider (interface), DecisionClient (one per connection), DecisionObserver,
+                 ResponseCache, Clock, SystemClock
+  Laravel/       SystemOneServiceProvider, SystemOneManager, ConnectionResolver, ConnectionConfig,
+                 Facades/SystemOne, Commands/*, Install/*, Events/*, DispatchesDecisionEvents,
+                 StoreResponseCache, QuietHttpFactory, LaravelSleeper,
+                 Testing/{SystemOneFake,FakeConnection,FakeAnswer}
   Exceptions/    SystemOneException marker and the typed errors above
 config/system-one.php
 docker/
-tests/{Unit,Contract,Integration}
+examples/        one runnable script per main use case, and the enums they share (#13)
+README.md        the user documentation (#13)
+tests/{Unit,Contract,Feature,Arch,Docs,Types,Integration,Smoke}
+workbench/       a page per feature for `composer serve`
 ```
 
 ## Quality bar
@@ -762,6 +810,10 @@ tests/{Unit,Contract,Integration}
     commands and events.
   - **Integration:** a separate suite runs against the Docker container in CI.
     It is tagged so local runs can skip it when Docker isn't running.
+  - **Docs (#13):** in the default run. The README's PHP snippets must parse and reach only
+    API that exists, its enums must match `examples/Enums`, and every command, option, env
+    var and composer script it names must exist. The fake example runs here with no server;
+    the other examples run in the Integration suite, and `examples/` is in PHPStan's paths.
 - Each ticket lands with its own tests, and nothing merges with a gate
   failing.
 
