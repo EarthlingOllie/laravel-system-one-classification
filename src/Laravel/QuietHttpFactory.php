@@ -21,8 +21,9 @@ use Illuminate\Http\Client\Response;
  * tools built on those events (Telescope's and Pulse's outgoing-request recorders) do not
  * see the package's requests either.
  *
- * It reads the wrapped factory's protected state, which Laravel 13 lays out as below; the
- * Feature tests fail if a Laravel release changes that.
+ * It reads the wrapped factory's protected state, which Laravel 12.25+ and 13 lay out as below
+ * (12.25 added $allowedStrayRequestUrls, hence the package's floor); the Feature tests fail if
+ * a Laravel release changes that.
  */
 final class QuietHttpFactory extends Factory
 {

@@ -10,7 +10,7 @@ A typed Laravel client for System 1 decision models (Laya, Jev and compatible mo
 | 2 | AWS / Bedrock | Out of scope for now. There is no AWS connection or SigV4 transport in v1. |
 | 3 | Confidence | Every answer exposes both `confidence` values. `answerConfidence` (the probability of the reported answer) is what you threshold on, because it can be compared across models. The raw `confidence` is kept and tagged with the model profile that produced it. |
 | 4 | Local provisioning | A standalone `compose.yaml` is the primary path, with an optional Laravel Sail service. Both are offered by `system-one:install`. |
-| 5 | PHP version | PHP 8.4 minimum, with Laravel 13. Value objects are kept as simple as possible (see Quality bar). |
+| 5 | PHP version | PHP 8.4 minimum, with Laravel 12.25+ or 13. Value objects are kept as simple as possible (see Quality bar). |
 | 6 | Vendor | `earthlingollie`. |
 | 7 | Framework coupling | One Laravel package that depends on `illuminate/http`. Everything outside `src/Laravel/` stays free of other framework imports. |
 | 8 | Question identity | Explicit string keys (`Question::choice('department', …)`). The question object is the handle you read results with. |
@@ -791,7 +791,7 @@ workbench/       a page per feature for `composer serve`
 
 ### Testing
 
-- **Tools:** Pest 3 on Orchestra Testbench (Laravel 13, PHP 8.4), PHPStan at
+- **Tools:** Pest 3 on Orchestra Testbench (Laravel 12 and 13, PHP 8.4), PHPStan at
   max level with strict rules, Laravel Pint, and Infection for mutation
   testing.
 - **CI gates, all required on every pull request:**

@@ -40,7 +40,7 @@ $result->get($department)->answerConfidence; // 0.93
 ## Requirements
 
 - **PHP 8.4** or later.
-- **Laravel 13** (`illuminate/http` and `illuminate/support` ^13).
+- **Laravel 12.25+ or 13** (`illuminate/http` and `illuminate/support` `^12.25 || ^13.0`).
 - **Docker** with Compose v2, for the local Laya server. You don't need it if you only use the hosted connections, or only the testing fake.
 - **Resources for the local server:**
   - **Memory:** give Docker at least 8 GB. The English checkpoint uses about 2 GB once loaded and peaks near 2.8 GB while it loads. Each extra checkpoint (such as `multilingual`) needs more.
@@ -90,7 +90,7 @@ php artisan system-one:health
 
 The first start builds the image and downloads the checkpoint, which can take a while (see [Troubleshooting](#troubleshooting)). `--wait` returns once the checkpoint is loaded. The Compose project is named `system-one`, so every app on your machine that uses this file shares one server on port 8000, and one copy of the weights.
 
-**Sail** is for an app that runs in [Laravel Sail](https://laravel.com/docs/sail). A new Laravel 13 app doesn't include Sail, so set it up first with `composer require laravel/sail --dev` and `php artisan sail:install`.
+**Sail** is for an app that runs in [Laravel Sail](https://laravel.com/docs/sail). A new Laravel 12 or 13 app doesn't include Sail, so set it up first with `composer require laravel/sail --dev` and `php artisan sail:install`.
 
 ```bash
 php artisan system-one:install --mode=sail
