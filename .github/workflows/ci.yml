@@ -58,6 +58,28 @@ jobs:
       - uses: ramsey/composer-install@v3
       - run: composer test
 
+  # The jobs above resolve to Laravel 13; this one runs the same suite on Laravel 12, both on
+  # the newest 12.x and on the oldest set of dependencies composer.json allows (Laravel 12.25).
+  test-laravel-12:
+    name: Tests on Laravel 12 (${{ matrix.dependencies }} dependencies)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dependencies: [highest, lowest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          coverage: none
+      # Pinned through require-dev, so the package's own `require` (which a test checks) is unchanged.
+      - run: composer require --dev --no-update --no-interaction "laravel/framework:^12.25"
+      - uses: ramsey/composer-install@v3
+        with:
+          dependency-versions: ${{ matrix.dependencies }}
+      - run: composer test
+
   coverage:
     name: Coverage (100% lines and branches)
     runs-on: ubuntu-latest

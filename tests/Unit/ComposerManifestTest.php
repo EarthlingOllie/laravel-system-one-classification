@@ -8,11 +8,11 @@ it('is published under the planned package name', function (): void {
     expect(ComposerManifest::read()['name'])->toBe('earthlingollie/laravel-system-one-classification');
 });
 
-it('requires PHP 8.4 and Laravel 13', function (): void {
+it('requires PHP 8.4 and Laravel 12.25 or 13', function (): void {
     expect(ComposerManifest::read()['require'])->toMatchArray([
         'php' => '^8.4',
-        'illuminate/http' => '^13.0',
-        'illuminate/support' => '^13.0',
+        'illuminate/http' => '^12.25 || ^13.0',
+        'illuminate/support' => '^12.25 || ^13.0',
     ]);
 });
 
